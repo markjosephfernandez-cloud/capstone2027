@@ -1,0 +1,174 @@
+Array
+(
+    [0] => Array
+        (
+            [item_name] => 01 DAFA_1742344303.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/01 DAFA_1742344303.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:46
+            [time] => 1742343526
+        )
+
+    [1] => Array
+        (
+            [item_name] => 11 CC_1742344584.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/11 CC_1742344584.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:46
+            [time] => 1742343526
+        )
+
+    [2] => Array
+        (
+            [item_name] => 12 SIET_1742344303.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/12 SIET_1742344303.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:46
+            [time] => 1742343526
+        )
+
+    [3] => Array
+        (
+            [item_name] => 01 DAFA_1742343502.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/01 DAFA_1742343502.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [4] => Array
+        (
+            [item_name] => 02 CN_1742343502.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/02 CN_1742343502.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [5] => Array
+        (
+            [item_name] => 03 CE.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/03 CE.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [6] => Array
+        (
+            [item_name] => 04 FPA_1742343502.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/04 FPA_1742343502.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [7] => Array
+        (
+            [item_name] => 05 CLJ.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/05 CLJ.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [8] => Array
+        (
+            [item_name] => 06 CHM.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/06 CHM.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [9] => Array
+        (
+            [item_name] => 07 CAS.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/07 CAS.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [10] => Array
+        (
+            [item_name] => 09 CBA.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/09 CBA.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [11] => Array
+        (
+            [item_name] => 10 CCS.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/10 CCS.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [12] => Array
+        (
+            [item_name] => 11 CC.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/11 CC.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [13] => Array
+        (
+            [item_name] => 12 SIET.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/12 SIET.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:13
+            [time] => 1742343493
+        )
+
+    [14] => Array
+        (
+            [item_name] => 08 CA.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/08 CA.jpg
+            [filetype] => jpg
+            [timestamp] => 2025-03-19 01:18:12
+            [time] => 1742343492
+        )
+
+    [15] => Array
+        (
+            [item_name] => 11 CC 1.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/11 CC 1.jpg
+            [filetype] => jpg
+            [timestamp] => 2024-11-30 08:14:17
+            [time] => 1732950857
+        )
+
+    [16] => Array
+        (
+            [item_name] => 01 DAFA.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/01 DAFA.jpg
+            [filetype] => jpg
+            [timestamp] => 2024-11-05 03:27:04
+            [time] => 1730773624
+        )
+
+    [17] => Array
+        (
+            [item_name] => 02 CN.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/02 CN.jpg
+            [filetype] => jpg
+            [timestamp] => 2024-11-05 03:24:57
+            [time] => 1730773497
+        )
+
+    [18] => Array
+        (
+            [item_name] => 04 FPA.jpg
+            [filepath] => /Applications/XAMPP/xamppfiles/htdocs/TRASH/04 FPA.jpg
+            [filetype] => jpg
+            [timestamp] => 2024-11-05 03:19:33
+            [time] => 1730773173
+        )
+
+)

@@ -1,0 +1,2 @@
+greyhound-hub-2.0/greyhound_events_model.keras filter=lfs diff=lfs merge=lfs -text
+greyhound-hub-2.0/resnet50_event_classifier.keras filter=lfs diff=lfs merge=lfs -text

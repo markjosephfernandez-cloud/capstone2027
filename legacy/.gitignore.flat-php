@@ -1,0 +1,47 @@
+# Ignore Python virtual environments
+env/
+venv/
+yolo_env/
+
+# Ignore macOS system files
+.DS_Store
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore log files
+*.log
+
+# Ignore dependency directories
+node_modules/
+
+# Ignore large media files
+*.mp4
+*.zip
+*.tar.gz
+
+# Ignore downloads folder containing large files
+downloads/
+
+# Ignore IDE files
+.vscode/
+.idea/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore test result directories
+test_results/
+
+# Ignore backup files
+*~
+*.bak
+
+# Ignore other unwanted files (adjust this list as necessary)
+*.swp
+
+# Ignore JS source-maps and PyTorch model files
+*.map
+*.pt
