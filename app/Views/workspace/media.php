@@ -1,8 +1,16 @@
 <?= view('layouts/app_header', ['user' => $user, 'activePage' => $activePage, 'title' => $title]) ?>
 <?php $visibleFileCount = count($files); ?>
 <?php $previewableImageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp']; ?>
+<?php $previewableVideoTypes = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v']; ?>
 <?php $logoWatermarkTypes = ['jpg', 'jpeg', 'png', 'webp']; ?>
 <?php $canManageMedia = (bool) ($canManage ?? false); ?>
+<?php
+$workspaceMediaUrl = static function (int $fileId, string $action): string {
+    $basePath = (string) (parse_url(site_url(''), PHP_URL_PATH) ?: '');
+    $route = trim($basePath, '/') . '/workspace/file-management/' . $fileId . '/' . trim($action, '/');
+    return '/' . ltrim($route, '/');
+};
+?>
 
 <style>
     .media-workspace { --media-primary: #315efb; --media-primary-soft: #eef3ff; --media-ink: #17223b; --media-muted: #68748b; --media-border: #e4e9f2; }
@@ -64,14 +72,14 @@
     .media-workspace .image-preview-dialog { max-width: min(1100px, calc(100vw - 2rem)); }
     .media-workspace .image-preview-dialog .modal-content { max-height: calc(100vh - 2rem); overflow: hidden; }
     .media-workspace .image-preview-body { align-items: center; background: #101a31; display: flex; justify-content: center; min-height: 260px; max-height: calc(100vh - 190px); overflow: hidden; padding: 0; }
-    .media-workspace .image-preview-body img { display: block; height: auto; max-height: calc(100vh - 190px); max-width: 100%; object-fit: contain; width: auto; }
+    .media-workspace .image-preview-body img, .media-workspace .image-preview-body video { display: block; height: auto; max-height: calc(100vh - 190px); max-width: 100%; object-fit: contain; width: auto; }
     .media-workspace .media-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); padding: 1.25rem; }
     .media-workspace .folder-browser { background: #fbfcff; border-bottom: 1px solid #edf0f6; padding: 1.15rem 1.25rem; }
     .media-workspace .folder-browser-title { color: var(--media-ink); font-size: .9rem; font-weight: 700; margin: 0; }
     .media-workspace .folder-browser-subtitle { color: var(--media-muted); font-size: .78rem; margin: .2rem 0 0; }
     .media-workspace .folder-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); margin-top: .9rem; }
     .media-workspace .folder-list-header, .media-workspace .folder-list-cell { display: none; }
-    .media-workspace .folder-grid.is-list-view { --folder-list-columns: minmax(220px, 2fr) minmax(140px, 1fr) minmax(105px, .65fr) 48px; background: #fff; border: 1px solid #e0e4ea; border-radius: 12px; display: block; overflow: hidden; }
+    .media-workspace .folder-grid.is-list-view { --folder-list-columns: minmax(220px, 2fr) minmax(140px, 1fr) minmax(105px, .65fr) 48px; background: #fff; border: 1px solid #e0e4ea; border-radius: 12px; display: block; overflow: visible; }
     .media-workspace .folder-grid.is-list-view .folder-list-header { align-items: center; border-bottom: 1px solid #dadce0; color: #5f6368; display: grid; font-size: .75rem; font-weight: 600; gap: 12px; grid-template-columns: var(--folder-list-columns); height: 44px; padding: 0 8px 0 16px; }
     .media-workspace .folder-grid.is-list-view .folder-card { align-items: stretch; background: #fff; border: 0; border-bottom: 1px solid #e8eaed; border-radius: 0; display: grid; gap: 12px; grid-template-columns: var(--folder-list-columns); min-height: 58px; padding: 0 8px 0 16px; width: 100%; }
     .media-workspace .folder-grid.is-list-view .folder-card:last-child { border-bottom: 0; }
@@ -88,12 +96,13 @@
     .media-workspace .folder-grid.is-list-view .folder-card-menu .drive-more-button { position: relative; z-index: 2; }
     .media-workspace .folder-card { background: #f0f4f9; border: 1px solid transparent; border-radius: 12px; color: inherit; min-width: 0; position: relative; transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
     .media-workspace .folder-card:hover { background: #e8eef8; border-color: #d8e1ef; box-shadow: 0 2px 6px rgba(60, 64, 67, .10); color: inherit; }
+    .media-workspace .folder-card:focus-within, .media-workspace .folder-card:has(.folder-card-menu.show) { z-index: 20; }
     .media-workspace .folder-card-main { align-items: center; color: inherit; display: flex; gap: .7rem; min-width: 0; padding: .85rem 3.1rem .85rem .9rem; text-decoration: none; }
     .media-workspace .folder-card-main:hover { color: inherit; }
     .media-workspace .folder-card-menu { position: absolute; right: .55rem; top: .57rem; z-index: 3; }
     .media-workspace .drive-more-button { align-items: center; background: transparent; border: 0; border-radius: 50%; color: #5f6b7d; display: inline-flex; height: 34px; justify-content: center; width: 34px; }
     .media-workspace .drive-more-button:hover, .media-workspace .drive-more-button:focus { background: rgba(60, 64, 67, .1); color: #1f2b43; }
-    .media-workspace .drive-action-menu { border: 0; border-radius: 10px; box-shadow: 0 7px 24px rgba(60, 64, 67, .2); min-width: 205px; padding: .4rem; }
+    .media-workspace .drive-action-menu { border: 0; border-radius: 10px; box-shadow: 0 7px 24px rgba(60, 64, 67, .2); min-width: 205px; padding: .4rem; z-index: 30; }
     .media-workspace .drive-action-menu .dropdown-item { border: 0; border-radius: 7px; color: #3e4a60; font-size: .84rem; padding: .55rem .65rem; text-align: left; width: 100%; }
     .media-workspace .drive-action-menu .dropdown-item:hover { background: #eef3ff; }
     .media-workspace .folder-card-icon { align-items: center; background: #edf2ff; border-radius: 10px; color: var(--media-primary); display: inline-flex; flex: 0 0 auto; font-size: 1.25rem; height: 40px; justify-content: center; width: 40px; }
@@ -114,6 +123,9 @@
     .media-workspace .media-grid-card:hover { background: #eaf0f8; box-shadow: 0 3px 9px rgba(60, 64, 67, .12); }
     .media-workspace .grid-thumbnail, .media-workspace .grid-file-icon { align-items: center; background: #fff; border: 0; border-radius: 10px; color: var(--media-primary); display: flex; font-size: 2rem; height: 160px; justify-content: center; margin: .5rem; overflow: hidden; padding: 0; width: calc(100% - 1rem); }
     .media-workspace .grid-thumbnail img { border: 0; border-radius: 10px; height: 100%; object-fit: cover; width: 100%; }
+    .media-workspace .grid-thumbnail video { border: 0; border-radius: 10px; height: 100%; object-fit: cover; pointer-events: none; width: 100%; }
+    .media-workspace .video-thumbnail { position: relative; }
+    .media-workspace .video-thumbnail::after { align-items: center; background: rgba(17,38,75,.8); border-radius: 50%; color: #fff; content: "\F4F4"; display: flex; font-family: bootstrap-icons; font-size: 1rem; height: 40px; justify-content: center; left: 50%; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 40px; }
     .media-workspace .grid-card-content { display: flex; flex: 1; flex-direction: column; gap: .65rem; padding: .9rem; }
     .media-workspace .grid-file-name { color: #34405b; font-size: .9rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .media-workspace .grid-file-info { color: #7a869d; font-size: .78rem; }
@@ -210,15 +222,9 @@
                 <form class="row g-3 align-items-end" id="batchUploadForm" action="<?= esc(site_url('workspace/file-management/upload')) ?>" method="post" enctype="multipart/form-data">
                     <?= csrf_field() ?>
                     <div class="col-md-6 col-xl-3"><div class="upload-picker" data-upload-drop><input type="file" id="files" name="files[]" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm,video/x-m4v,audio/mpeg,audio/wav,audio/ogg,application/pdf,.doc,.docx,.xls,.xlsx" multiple><label class="upload-picker-label" for="files"><span class="upload-picker-icon"><i class="bi bi-files"></i></span><span><span class="upload-picker-title">Browse files</span><span class="upload-picker-hint">Images, videos, audio, and documents</span></span></label><span class="upload-selection" id="fileSelection">No files selected</span></div></div>
-                    <div class="col-md-6 col-xl-3"><div class="upload-picker"><input type="file" id="folder_files" name="folder_files[]" webkitdirectory directory multiple><label class="upload-picker-label" for="folder_files"><span class="upload-picker-icon"><i class="bi bi-folder2-open"></i></span><span><span class="upload-picker-title">Browse a folder</span><span class="upload-picker-hint">Preserves supported subfolders</span></span></label><span class="upload-selection" id="folderSelection">Chrome or Edge recommended</span></div></div>
-                    <div class="col-md-4 col-xl-2"><label class="form-label" for="folder_id">Upload to folder</label><select class="form-select" id="folder_id" name="folder_id"><option value="">Root library</option><?php foreach ($folderOptions as $folder): ?><option value="<?= (int) $folder['id'] ?>" <?= $folderId === (int) $folder['id'] ? 'selected' : '' ?>><?= esc($folder['display_name']) ?></option><?php endforeach; ?></select></div>
-                    <div class="col-md-5 col-xl-3"><label class="form-label" for="display_title">Display Title</label><input class="form-control" id="display_title" name="display_title" maxlength="150" required placeholder="Required title shown to users" pattern=".*\S.*" aria-describedby="displayTitleHelp"><div class="form-text" id="displayTitleHelp">Up to 150 characters; applied to all selected files.</div></div>
-                    <div class="col-md-5 col-xl-2"><label class="form-label" for="description">Description</label><input class="form-control" id="description" name="description" maxlength="5000" placeholder="Optional; applied to all uploads"></div>
-                    <div class="col-md-3 col-xl-2 d-grid"><button class="btn btn-primary h-100" id="uploadSubmit" type="submit" disabled><i class="bi bi-cloud-arrow-up me-1"></i>Start upload</button></div>
-                    <div class="col-md-4"><label class="form-label" for="distribution_type">Distribution Type</label><select class="form-select" id="distribution_type" name="distribution_type"><option value="">Process only</option><option value="mobile_app">Mobile App</option><option value="department">Department Assignment</option></select></div>
-                    <div class="col-md-4"><label class="form-label" for="distribution_target">Publish To</label><select class="form-select" id="distribution_target" name="distribution_target"><option value="">Select distribution type first</option></select></div>
-                    <div class="col-md-4 d-none" id="assignmentMethodWrap"><label class="form-label" for="assignment_method">Assignment Method</label><select class="form-select" id="assignment_method" name="assignment_method"><option value="direct">Direct Send</option><option value="request">Assign to Existing Request</option></select></div>
-                    <div class="col-md-6 d-none" id="requestWrap"><label class="form-label" for="request_id">Existing Request</label><select class="form-select" id="request_id" name="request_id"><option value="">Choose request</option><?php foreach ($openRequests as $request): ?><option value="<?= (int) $request['id'] ?>" data-department="<?= esc($request['department'], 'attr') ?>"><?= esc($request['department'] . ' — ' . $request['title']) ?></option><?php endforeach; ?></select></div>
+                    <div class="col-md-6 col-xl-3"><div class="upload-picker"><input type="file" id="folder_files" name="folder_files[]" webkitdirectory directory mozdirectory multiple><label class="upload-picker-label" for="folder_files"><span class="upload-picker-icon"><i class="bi bi-folder2-open"></i></span><span><span class="upload-picker-title">Browse a folder</span><span class="upload-picker-hint">Preserves supported subfolders</span></span></label><span class="upload-selection" id="folderSelection">Chrome or Edge recommended</span></div></div>
+                    <div class="col-md-6 col-xl-3"><label class="form-label" for="folder_id">Upload to folder</label><select class="form-select" id="folder_id" name="folder_id"><option value="">Root library</option><?php foreach ($folderOptions as $folder): ?><option value="<?= (int) $folder['id'] ?>" <?= $folderId === (int) $folder['id'] ? 'selected' : '' ?>><?= esc($folder['display_name']) ?></option><?php endforeach; ?></select></div>
+                    <div class="col-md-6 col-xl-3 d-grid"><button class="btn btn-primary h-100" id="uploadSubmit" type="submit" disabled><i class="bi bi-cloud-arrow-up me-1"></i>Start upload</button></div>
                     <div class="col-12"><p class="mb-0 text-muted small"><i class="bi bi-droplet-half me-1"></i>Watermark processing runs automatically when enabled; the stored original is never changed.</p></div>
                     <div class="col-12 d-none" id="uploadProgress" role="status" aria-live="polite"><div class="upload-progress"><div class="d-flex justify-content-between gap-3 mb-2"><span id="uploadProgressLabel">Preparing uploads&hellip;</span><span id="uploadProgressCount"></span></div><div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" style="width: 0%"></div></div></div></div>
                     <div class="col-12"><p class="mb-0 text-muted small"><i class="bi bi-shield-check me-1"></i>No application file-count limit: selected media is uploaded one at a time. Maximum size: 100 MB per file &middot; Each upload receives event analysis and a metadata passport.</p></div>
@@ -232,14 +238,14 @@
                 <?php if ($stage !== ''): ?><input type="hidden" name="stage" value="<?= esc($stage) ?>"><?php endif; ?>
                 <div class="browser-heading">
                     <div><h3><?= $query !== '' ? 'Matching Media' : 'Browse media' ?></h3><p>Search display titles, folder names, AI-generated tags, and manual tags.</p></div>
-                    <?php if ($query !== '' || $type !== '' || $distribution !== ''): ?><a class="btn btn-sm btn-link text-decoration-none" href="<?= esc(site_url('workspace/file-management')) ?>"><i class="bi bi-x-circle me-1"></i>Clear filters</a><?php endif; ?>
+                    <?php if ($query !== '' || $type !== ''): ?><a class="btn btn-sm btn-link text-decoration-none" href="<?= esc(site_url('workspace/file-management')) ?>"><i class="bi bi-x-circle me-1"></i>Clear filters</a><?php endif; ?>
                 </div>
                 <div class="row g-2 align-items-center">
-                    <div class="col-lg-4">
+                    <div class="col-lg-5">
                         <label class="visually-hidden" for="mediaSearch">Search media by display title, folder, or tag</label>
                         <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" id="mediaSearch" name="q" placeholder="Search all folders and tags" value="<?= esc($query) ?>" autocomplete="off"></div>
                     </div>
-                    <div class="col-sm-4 col-lg-2">
+                    <div class="col-sm-5 col-lg-3">
                         <label class="visually-hidden" for="mediaType">Filter media by file type</label>
                         <select class="form-select" id="mediaType" name="type">
                             <option value="">All file types</option>
@@ -248,8 +254,7 @@
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-sm-4 col-lg-3"><label class="visually-hidden" for="distributionFilter">Distribution</label><select class="form-select" id="distributionFilter" name="distribution"><option value="">All distributions</option><option value="mobile_app" <?= $distribution === 'mobile_app' ? 'selected' : '' ?>>Mobile App</option><option value="department" <?= $distribution === 'department' ? 'selected' : '' ?>>Department Assignment</option></select></div>
-                    <div class="col-sm-4 col-lg-3">
+                    <div class="col-sm-7 col-lg-4">
                         <div class="d-flex align-items-center gap-2">
                             <button class="btn btn-primary flex-grow-1" type="submit"><i class="bi bi-funnel me-1"></i> Apply filters</button>
                             <div class="media-view-switcher" role="group" aria-label="Choose media view">
@@ -279,7 +284,7 @@
                     <div class="folder-grid" id="folderBrowserView">
                         <div class="folder-list-header" aria-hidden="true"><span>Folder name</span><span class="folder-list-modified">Date modified</span><span>File count</span><span class="text-center">Actions</span></div>
                         <?php foreach ($folders as $folder): ?>
-                            <div class="folder-card">
+                            <div class="folder-card" data-library-search="<?= esc(mb_strtolower((string) $folder['name']), 'attr') ?>">
                                 <a class="folder-card-main" href="<?= esc(site_url('workspace/file-management?folder=' . (int) $folder['id'])) ?>" aria-label="Open folder <?= esc($folder['name']) ?>">
                                     <span class="folder-name-cell"><span class="folder-card-icon"><i class="bi bi-folder-fill"></i></span><span class="min-w-0"><span class="folder-card-name d-block" title="<?= esc($folder['name']) ?>"><?= esc($folder['name']) ?></span><span class="folder-card-meta"><?= esc((string) $folder['file_count']) ?> <?= (int) $folder['file_count'] === 1 ? 'file' : 'files' ?></span></span></span>
                                     <span class="folder-list-cell folder-list-modified"><?= esc(! empty($folder['created_at']) ? date('M d, Y', strtotime((string) $folder['created_at'])) : '-') ?></span>
@@ -290,6 +295,7 @@
                                     <ul class="dropdown-menu dropdown-menu-end drive-action-menu">
                                         <li><a class="dropdown-item" href="<?= esc(site_url('workspace/file-management?folder=' . (int) $folder['id'])) ?>"><i class="bi bi-folder2-open me-2"></i>Open folder</a></li>
                                         <li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#renameFolderModal" data-folder-name="<?= esc($folder['name']) ?>" data-folder-action="<?= esc(site_url('workspace/file-management/folders/' . (int) $folder['id'] . '/rename')) ?>"><i class="bi bi-pencil me-2"></i>Rename</button></li>
+                                        <li><button class="dropdown-item text-primary" type="button" data-bs-toggle="modal" data-bs-target="#postMediaModal" data-post-target-id="<?= (int) $folder['id'] ?>" data-post-type="folder" data-folder-name="<?= esc($folder['name']) ?>"><i class="bi bi-send me-2"></i>Post</button></li>
                                         <li><hr class="dropdown-divider"></li>
                                         <li><form action="<?= esc(site_url('workspace/file-management/folders/' . (int) $folder['id'] . '/delete')) ?>" method="post" onsubmit="return confirm('Delete this folder and its subfolders? Their active files will be moved to Trash and can be restored.');"><?= csrf_field() ?><button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash me-2"></i>Delete folder</button></form></li>
                                     </ul>
@@ -303,6 +309,17 @@
             <div class="modal fade" id="renameFolderModal" tabindex="-1" aria-labelledby="renameFolderTitle" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form id="renameFolderForm" method="post"><?= csrf_field() ?><div class="modal-header"><h5 class="modal-title" id="renameFolderTitle">Rename folder</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><label class="form-label" for="renameFolderName">New folder name</label><input class="form-control" id="renameFolderName" name="name" maxlength="120" required></div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit"><i class="bi bi-check2 me-1"></i>Save name</button></div></form></div></div>
             </div>
+
+            <div class="modal fade" id="postMediaModal" tabindex="-1" aria-labelledby="postMediaTitle" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form id="postMediaForm" method="post" action="<?= esc(site_url('workspace/file-management/post')) ?>"><?= csrf_field() ?><div class="modal-header"><h5 class="modal-title" id="postMediaTitle">Post to Mobile App</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body">
+                <input type="hidden" name="post_type" id="postMediaType" value="">
+                <input type="hidden" name="folder_id" id="postMediaFolderId" value="">
+                <div id="postMediaFileIds"></div>
+                <div class="mb-3"><label class="form-label" for="postDisplayTitle">Display Title</label><input class="form-control" id="postDisplayTitle" name="display_title" maxlength="150" required></div>
+                <div class="mb-3"><label class="form-label" for="postChannel">Channel</label><select class="form-select" id="postChannel" name="channel" required><option value="">Choose destination</option><option value="General Events">General Events</option><option value="CCS">CCS</option><option value="CBA">CBA</option><option value="CN">CN</option><option value="CHM">CHM</option></select></div>
+                <div><label class="form-label" for="postDescription">Description</label><input class="form-control" id="postDescription" name="description" maxlength="5000" placeholder="Optional"></div>
+                </div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Upload</button></div></form></div></div>
+            </div>
             <form class="bulk-toolbar" id="bulkActionForm" method="post" action="<?= esc(site_url('workspace/file-management/bulk-download' . ($folderId === null ? '' : '?folder=' . (int) $folderId))) ?>">
                 <?= csrf_field() ?>
                 <span id="bulkSelectedInputs"></span>
@@ -313,6 +330,7 @@
                 </div>
                 <div class="bulk-actions">
                     <?php if ($canManage): ?>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-bulk-action="post" data-bs-toggle="modal" data-bs-target="#postMediaModal" disabled><i class="bi bi-send me-1"></i>Post</button>
                     <button class="btn btn-sm btn-outline-secondary" type="button" data-bulk-action="tags" data-bs-toggle="modal" data-bs-target="#manualTaggingModal" disabled><i class="bi bi-tags me-1"></i>Tags</button>
                     <?php endif; ?>
                     <button class="btn btn-sm btn-outline-primary" type="submit" data-bulk-action="download" disabled><i class="bi bi-file-earmark-zip me-1"></i>Download</button>
@@ -325,15 +343,17 @@
                     <thead><tr><th class="text-center"><input class="form-check-input media-select" type="checkbox" data-media-select-all aria-label="Select all visible media"></th><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Tags</th><th class="text-end">Actions</th></tr></thead>
                     <tbody>
                         <?php foreach ($files as $file): ?>
-                            <?php $isPreviewableImage = in_array(strtolower((string) $file['filetype']), $previewableImageTypes, true); $supportsLogo = $canManage && in_array(strtolower((string) $file['filetype']), $logoWatermarkTypes, true); $previewUrl = site_url('workspace/file-management/' . (int) $file['id'] . ($supportsLogo ? '/watermarked-preview' : '/preview')); $mediaTitle = \App\Libraries\MediaTitle::forFile($file); ?>
-                            <tr>
+                            <?php $fileId = (int) $file['id']; $fileType = strtolower((string) $file['filetype']); $isPreviewableImage = in_array($fileType, $previewableImageTypes, true); $isPreviewableVideo = str_starts_with(strtolower((string) ($file['mime_type'] ?? '')), 'video/') || in_array($fileType, $previewableVideoTypes, true); $supportsLogo = $canManage && in_array($fileType, $logoWatermarkTypes, true); $previewUrl = $workspaceMediaUrl($fileId, $supportsLogo ? 'watermarked-preview' : 'preview'); $originalPreviewUrl = $workspaceMediaUrl($fileId, 'preview'); $videoPreviewUrl = $workspaceMediaUrl($fileId, 'video-preview'); $downloadUrl = $workspaceMediaUrl($fileId, 'download'); $mediaTitle = \App\Libraries\MediaTitle::forFile($file); $mediaSearchText = mb_strtolower(implode(' ', [$mediaTitle, (string) ($file['tags'] ?? ''), (string) ($file['classification'] ?? ''), (string) ($file['detected_objects'] ?? '')])); ?>
+                            <tr data-library-search="<?= esc($mediaSearchText, 'attr') ?>">
                                 <td class="text-center"><input class="form-check-input media-select" type="checkbox" data-media-select data-media-id="<?= (int) $file['id'] ?>" aria-label="Select <?= esc($mediaTitle) ?>"></td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
                                         <?php if ($isPreviewableImage): ?>
-                                            <button class="file-thumbnail" type="button" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" data-image-preview data-preview-src="<?= esc($previewUrl) ?>" data-original-preview-src="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/preview')) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/download')) ?>" data-logo-url="<?= $supportsLogo ? esc(site_url('workspace/watermarking#media-' . (int) $file['id'])) : '' ?>" aria-label="Preview <?= esc($mediaTitle) ?>">
-                                                <img src="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/preview')) ?>" alt="Preview of <?= esc($mediaTitle) ?>" loading="lazy">
+                                            <button class="file-thumbnail" type="button" data-bs-toggle="modal" data-bs-target="#mediaPreviewModal" data-media-preview data-preview-kind="image" data-preview-src="<?= esc($previewUrl) ?>" data-original-preview-src="<?= esc($originalPreviewUrl) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc($downloadUrl) ?>" data-logo-url="<?= $supportsLogo ? esc(site_url('workspace/watermarking#media-' . $fileId)) : '' ?>" aria-label="Preview <?= esc($mediaTitle) ?>">
+                                                <img src="<?= esc($originalPreviewUrl) ?>" alt="Preview of <?= esc($mediaTitle) ?>" loading="lazy">
                                             </button>
+                                        <?php elseif ($isPreviewableVideo): ?>
+                                            <button class="file-thumbnail" type="button" data-bs-toggle="modal" data-bs-target="#mediaPreviewModal" data-media-preview data-preview-kind="video" data-preview-src="<?= esc($videoPreviewUrl) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc($downloadUrl) ?>" aria-label="Play <?= esc($mediaTitle) ?>"><span class="file-icon"><i class="bi bi-play-circle"></i></span></button>
                                         <?php else: ?>
                                             <span class="file-icon"><i class="bi bi-file-earmark"></i></span>
                                         <?php endif; ?>
@@ -345,9 +365,9 @@
                                 <td><?= esc($file['dateupload'] ? date('M d, Y', strtotime((string) $file['dateupload'])) : '-') ?></td>
                                 <td><span class="tags-value" title="<?= esc($file['tags'] ?: '') ?>"><?= esc($file['tags'] ?: '-') ?></span></td>
                                 <td class="text-end text-nowrap">
-                                    <a class="btn btn-outline-primary btn-sm action-button" href="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/download')) ?>" title="Download <?= esc($mediaTitle) ?>"><i class="bi bi-download"></i><span class="d-none d-xl-inline">Download</span></a>
+                                    <a class="btn btn-outline-primary btn-sm action-button" href="<?= esc($downloadUrl) ?>" title="Download <?= esc($mediaTitle) ?>"><i class="bi bi-download"></i><span class="d-none d-xl-inline">Download</span></a>
                                     <?php if ($canManage && in_array(strtolower((string) $file['filetype']), $logoWatermarkTypes, true)): ?><a class="btn btn-outline-secondary btn-sm action-button" href="<?= esc(site_url('workspace/watermarking#media-' . (int) $file['id'])) ?>" title="Download with a department logo"><i class="bi bi-patch-check"></i><span class="d-none d-xxl-inline">Logo copy</span></a><?php endif; ?>
-                                    <span class="badge bg-success">Published<?= ! empty($file['publication_channel']) ? ': ' . esc($file['publication_channel']) : '' ?></span>
+
                                     <?php if ($canManage): ?><form class="d-inline" action="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/trash')) ?>" method="post" onsubmit="return confirm('Move this file to Trash?');">
                                         <?= csrf_field() ?>
                                         <button class="btn btn-outline-danger btn-sm action-button" type="submit" title="Move <?= esc($mediaTitle) ?> to Trash"><i class="bi bi-trash"></i><span class="d-none d-xl-inline">Trash</span></button>
@@ -364,21 +384,25 @@
 
             <div class="media-grid" id="mediaGridView">
                 <?php foreach ($files as $file): ?>
-                    <?php $isPreviewableImage = in_array(strtolower((string) $file['filetype']), $previewableImageTypes, true); $supportsLogo = $canManage && in_array(strtolower((string) $file['filetype']), $logoWatermarkTypes, true); $previewUrl = site_url('workspace/file-management/' . (int) $file['id'] . ($supportsLogo ? '/watermarked-preview' : '/preview')); $mediaTitle = \App\Libraries\MediaTitle::forFile($file); ?>
-                    <article class="media-grid-card">
+                    <?php $fileId = (int) $file['id']; $fileType = strtolower((string) $file['filetype']); $isPreviewableImage = in_array($fileType, $previewableImageTypes, true); $isPreviewableVideo = str_starts_with(strtolower((string) ($file['mime_type'] ?? '')), 'video/') || in_array($fileType, $previewableVideoTypes, true); $supportsLogo = $canManage && in_array($fileType, $logoWatermarkTypes, true); $previewUrl = $workspaceMediaUrl($fileId, $supportsLogo ? 'watermarked-preview' : 'preview'); $originalPreviewUrl = $workspaceMediaUrl($fileId, 'preview'); $videoPreviewUrl = $workspaceMediaUrl($fileId, 'video-preview'); $downloadUrl = $workspaceMediaUrl($fileId, 'download'); $mediaTitle = \App\Libraries\MediaTitle::forFile($file); $mediaSearchText = mb_strtolower(implode(' ', [$mediaTitle, (string) ($file['tags'] ?? ''), (string) ($file['classification'] ?? ''), (string) ($file['detected_objects'] ?? '')])); ?>
+                    <article class="media-grid-card" data-library-search="<?= esc($mediaSearchText, 'attr') ?>">
                         <label class="grid-select" title="Select <?= esc($mediaTitle) ?>"><input class="form-check-input media-select" type="checkbox" data-media-select data-media-id="<?= (int) $file['id'] ?>" aria-label="Select <?= esc($mediaTitle) ?>"></label>
                         <div class="dropdown grid-more">
                             <button class="drive-more-button bg-white" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for <?= esc($mediaTitle) ?>"><i class="bi bi-three-dots-vertical"></i></button>
                             <ul class="dropdown-menu dropdown-menu-end drive-action-menu">
-                                <?php if ($isPreviewableImage): ?><li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" data-image-preview data-preview-src="<?= esc($previewUrl) ?>" data-original-preview-src="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/preview')) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/download')) ?>" data-logo-url="<?= $supportsLogo ? esc(site_url('workspace/watermarking#media-' . (int) $file['id'])) : '' ?>"><i class="bi bi-eye me-2"></i>Preview</button></li><?php endif; ?>
-                                <li><a class="dropdown-item" href="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/download')) ?>"><i class="bi bi-download me-2"></i>Download</a></li>
+                                <?php if ($isPreviewableImage || $isPreviewableVideo): ?><li><button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#mediaPreviewModal" data-media-preview data-preview-kind="<?= $isPreviewableVideo ? 'video' : 'image' ?>" data-preview-src="<?= esc($isPreviewableVideo ? $videoPreviewUrl : $previewUrl) ?>" data-original-preview-src="<?= $isPreviewableImage ? esc($originalPreviewUrl) : '' ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc($downloadUrl) ?>" data-logo-url="<?= $supportsLogo ? esc(site_url('workspace/watermarking#media-' . $fileId)) : '' ?>"><i class="bi <?= $isPreviewableVideo ? 'bi-play-circle' : 'bi-eye' ?> me-2"></i><?= $isPreviewableVideo ? 'Play video' : 'Preview' ?></button></li><?php endif; ?>
+                                <li><a class="dropdown-item" href="<?= esc($downloadUrl) ?>"><i class="bi bi-download me-2"></i>Download</a></li>
                                 <?php if ($canManage && in_array(strtolower((string) $file['filetype']), $logoWatermarkTypes, true)): ?><li><a class="dropdown-item" href="<?= esc(site_url('workspace/watermarking#media-' . (int) $file['id'])) ?>"><i class="bi bi-patch-check me-2"></i>Download with logo</a></li><?php endif; ?>
                                 <?php if ($canManage): ?><li><hr class="dropdown-divider"></li><li><form action="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/trash')) ?>" method="post" onsubmit="return confirm('Move this file to Trash?');"><?= csrf_field() ?><button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash me-2"></i>Move to Trash</button></form></li><?php endif; ?>
                             </ul>
                         </div>
                         <?php if ($isPreviewableImage): ?>
-                            <button class="grid-thumbnail" type="button" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" data-image-preview data-preview-src="<?= esc($previewUrl) ?>" data-original-preview-src="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/preview')) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/download')) ?>" data-logo-url="<?= $supportsLogo ? esc(site_url('workspace/watermarking#media-' . (int) $file['id'])) : '' ?>" aria-label="Preview <?= esc($mediaTitle) ?>">
-                                <img src="<?= esc(site_url('workspace/file-management/' . (int) $file['id'] . '/preview')) ?>" alt="Preview of <?= esc($mediaTitle) ?>" loading="lazy">
+                            <button class="grid-thumbnail" type="button" data-bs-toggle="modal" data-bs-target="#mediaPreviewModal" data-media-preview data-preview-kind="image" data-preview-src="<?= esc($previewUrl) ?>" data-original-preview-src="<?= esc($originalPreviewUrl) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc($downloadUrl) ?>" data-logo-url="<?= $supportsLogo ? esc(site_url('workspace/watermarking#media-' . $fileId)) : '' ?>" aria-label="Preview <?= esc($mediaTitle) ?>">
+                                <img src="<?= esc($originalPreviewUrl) ?>" alt="Preview of <?= esc($mediaTitle) ?>" loading="lazy">
+                            </button>
+                        <?php elseif ($isPreviewableVideo): ?>
+                            <button class="grid-thumbnail video-thumbnail" type="button" data-bs-toggle="modal" data-bs-target="#mediaPreviewModal" data-media-preview data-preview-kind="video" data-preview-src="<?= esc($videoPreviewUrl) ?>" data-preview-name="<?= esc($mediaTitle) ?>" data-download-url="<?= esc($downloadUrl) ?>" aria-label="Play <?= esc($mediaTitle) ?>">
+                                <video src="<?= esc($videoPreviewUrl) ?>" muted playsinline preload="metadata" aria-hidden="true"></video>
                             </button>
                         <?php else: ?>
                             <div class="grid-file-icon"><i class="bi bi-file-earmark"></i></div>
@@ -387,7 +411,7 @@
                             <div class="grid-file-name" title="<?= esc($mediaTitle) ?>"><?= esc($mediaTitle) ?></div>
                             <div class="d-flex align-items-center justify-content-between gap-2"><span class="file-type"><?= esc($file['filetype'] ?: 'Unknown') ?></span><span class="grid-file-info"><?= esc(format_bytes((int) $file['size'])) ?></span></div>
                             <div class="grid-file-info"><i class="bi bi-calendar3 me-1"></i><?= esc($file['dateupload'] ? date('M d, Y', strtotime((string) $file['dateupload'])) : '-') ?></div>
-                            <span class="badge bg-success-subtle text-success border border-success-subtle align-self-start"><i class="bi bi-check2-circle me-1"></i>Published<?= ! empty($file['publication_channel']) ? ' · ' . esc($file['publication_channel']) : '' ?></span>
+
                         </div>
                     </article>
                 <?php endforeach; ?>
@@ -402,38 +426,53 @@
 <div class="modal fade" id="manualTaggingModal" tabindex="-1" aria-labelledby="manualTaggingTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered" style="max-width:460px"><div class="modal-content"><form id="manualTaggingForm" action="<?= esc(site_url('workspace/file-management/tags')) ?>" method="post"><?= csrf_field() ?><div class="modal-header"><h5 class="modal-title" id="manualTaggingTitle">Manual Tagging</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><label class="form-label" for="manualTagInput">Tags</label><input class="form-control" id="manualTagInput" maxlength="50" placeholder="Enter a tag and press Enter" autocomplete="off"><div class="d-flex flex-wrap gap-2 mt-3" id="manualTagChips"></div><div id="manualTagValues"></div><div id="manualTagFileIds"></div><div class="form-text">Press Enter or comma to add. Tags are trimmed, limited to 50 characters, and duplicates are ignored.</div></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Save Tags</button></div></form></div></div></div>
 <?php endif; ?>
 <?php if ($files !== []): ?>
-    <div class="modal fade media-workspace" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewTitle" aria-hidden="true">
+    <div class="modal fade media-workspace" id="mediaPreviewModal" tabindex="-1" aria-labelledby="mediaPreviewTitle" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered image-preview-dialog">
             <div class="modal-content">
-                <div class="modal-header"><div><h5 class="modal-title" id="imagePreviewTitle">Image preview</h5><div class="small text-muted" id="imagePreviewStatus">The current default logo is applied when available. Your original file stays unchanged.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-                <div class="modal-body image-preview-body"><img id="imagePreviewImage" src="" alt=""></div>
-                <div class="modal-footer"><a class="btn btn-primary" id="imagePreviewLogoDownload" href="#"><i class="bi bi-patch-check me-1"></i>Choose logo &amp; download</a><a class="btn btn-outline-primary" id="imagePreviewDownload" href="#"><i class="bi bi-download me-1"></i>Download original</a><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
+                <div class="modal-header"><div><h5 class="modal-title" id="mediaPreviewTitle">Media preview</h5><div class="small text-muted" id="mediaPreviewStatus">The current default logo is applied when available. Your original file stays unchanged.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body image-preview-body"><img id="mediaPreviewImage" src="" alt=""><video class="d-none" id="mediaPreviewVideo" controls playsinline preload="metadata"></video></div>
+                <div class="modal-footer"><a class="btn btn-primary" id="mediaPreviewLogoDownload" href="#"><i class="bi bi-patch-check me-1"></i>Choose logo &amp; download</a><a class="btn btn-outline-primary" id="mediaPreviewDownload" href="#"><i class="bi bi-download me-1"></i>Download original</a><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
             </div>
         </div>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            var modal = document.getElementById('imagePreviewModal');
-            var previewImage = document.getElementById('imagePreviewImage');
-            var previewTitle = document.getElementById('imagePreviewTitle');
-            var previewStatus = document.getElementById('imagePreviewStatus');
-            var downloadLink = document.getElementById('imagePreviewDownload');
-            var logoDownloadLink = document.getElementById('imagePreviewLogoDownload');
+            var modal = document.getElementById('mediaPreviewModal');
+            var previewImage = document.getElementById('mediaPreviewImage');
+            var previewVideo = document.getElementById('mediaPreviewVideo');
+            var previewTitle = document.getElementById('mediaPreviewTitle');
+            var previewStatus = document.getElementById('mediaPreviewStatus');
+            var downloadLink = document.getElementById('mediaPreviewDownload');
+            var logoDownloadLink = document.getElementById('mediaPreviewLogoDownload');
             modal.addEventListener('show.bs.modal', function (event) {
                 var button = event.relatedTarget;
-                if (!button || !button.matches('[data-image-preview]')) { return; }
+                if (!button || !button.matches('[data-media-preview]')) { return; }
+                var previewKind = button.dataset.previewKind || 'image';
                 var originalPreview = button.dataset.originalPreviewSrc || button.dataset.previewSrc;
+                previewVideo.pause();
+                previewVideo.removeAttribute('src');
+                previewVideo.load();
+                previewImage.src = '';
+                previewImage.classList.toggle('d-none', previewKind === 'video');
+                previewVideo.classList.toggle('d-none', previewKind !== 'video');
                 previewImage.dataset.originalPreviewSrc = originalPreview;
                 previewImage.dataset.fallbackUsed = 'false';
-                previewImage.alt = 'Preview of ' + button.dataset.previewName;
+                previewImage.alt = previewKind === 'video' ? '' : 'Preview of ' + button.dataset.previewName;
                 previewTitle.textContent = button.dataset.previewName;
-                previewStatus.textContent = button.dataset.previewSrc === originalPreview
+                previewStatus.textContent = previewKind === 'video'
+                    ? 'Video preview. Use the player controls to play, seek, or adjust volume.'
+                    : button.dataset.previewSrc === originalPreview
                     ? 'Original image preview. Your stored file remains unchanged.'
                     : 'The current default logo is applied when available. Your original file stays unchanged.';
                 downloadLink.href = button.dataset.downloadUrl;
                 logoDownloadLink.href = button.dataset.logoUrl || '#';
-                logoDownloadLink.classList.toggle('d-none', !button.dataset.logoUrl);
-                previewImage.src = button.dataset.previewSrc;
+                logoDownloadLink.classList.toggle('d-none', previewKind === 'video' || !button.dataset.logoUrl);
+                if (previewKind === 'video') {
+                    previewVideo.src = button.dataset.previewSrc;
+                    previewVideo.load();
+                } else {
+                    previewImage.src = button.dataset.previewSrc;
+                }
             });
             previewImage.addEventListener('error', function () {
                 var originalPreview = previewImage.dataset.originalPreviewSrc;
@@ -443,7 +482,7 @@
                     previewImage.src = originalPreview;
                 }
             });
-            modal.addEventListener('hidden.bs.modal', function () { previewImage.src = ''; previewImage.removeAttribute('data-original-preview-src'); });
+            modal.addEventListener('hidden.bs.modal', function () { previewImage.src = ''; previewImage.removeAttribute('data-original-preview-src'); previewVideo.pause(); previewVideo.removeAttribute('src'); previewVideo.load(); });
 
             var bulkForm = document.getElementById('bulkActionForm');
             if (bulkForm) {
@@ -455,6 +494,8 @@
                 var getVisibleIds = function () {
                     var ids = [];
                     document.querySelectorAll('[data-media-select]').forEach(function (checkbox) {
+                        var mediaItem = checkbox.closest('tr, .media-grid-card');
+                        if (mediaItem && mediaItem.hidden) { return; }
                         if (ids.indexOf(checkbox.dataset.mediaId) === -1) { ids.push(checkbox.dataset.mediaId); }
                     });
                     return ids;
@@ -565,8 +606,14 @@
 
         var searchInput = document.getElementById('mediaSearch');
         if (searchInput) {
-            var searchTimer;
-            searchInput.addEventListener('input', function () { window.clearTimeout(searchTimer); searchTimer = window.setTimeout(function () { searchInput.form.submit(); }, 350); });
+            var filterVisibleLibraryItems = function () {
+                var term = searchInput.value.trim().toLocaleLowerCase();
+                document.querySelectorAll('[data-library-search]').forEach(function (item) {
+                    item.hidden = term !== '' && item.dataset.librarySearch.indexOf(term) === -1;
+                });
+            };
+            searchInput.addEventListener('input', filterVisibleLibraryItems);
+            filterVisibleLibraryItems();
         }
 
         var tagModal = document.getElementById('manualTaggingModal');
@@ -579,13 +626,50 @@
             tagModal.addEventListener('show.bs.modal',function(){tagFileIds.replaceChildren();var seen=[];document.querySelectorAll('[data-media-select]:checked').forEach(function(box){if(seen.indexOf(box.dataset.mediaId)===-1){seen.push(box.dataset.mediaId);var hidden=document.createElement('input');hidden.type='hidden';hidden.name='file_ids[]';hidden.value=box.dataset.mediaId;tagFileIds.appendChild(hidden);}});window.setTimeout(function(){tagInput.focus();},250);});
         }
 
-        var distributionType = document.getElementById('distribution_type');
-        if (distributionType) {
-            var targetSelect=document.getElementById('distribution_target'), methodWrap=document.getElementById('assignmentMethodWrap'), methodSelect=document.getElementById('assignment_method'), requestWrap=document.getElementById('requestWrap'), requestSelect=document.getElementById('request_id');
-            var departments=<?= json_encode(array_values(array_filter(array_column($departments, 'department'))), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-            var mobileTargets=['General Events','CCS','CBA','CN','CHM'];
-            var updateTargets=function(){var values=distributionType.value==='mobile_app'?mobileTargets:(distributionType.value==='department'?departments:[]);targetSelect.replaceChildren(new Option(values.length?'Choose destination':'Select distribution type first',''));values.forEach(function(value){targetSelect.add(new Option(value,value));});methodWrap.classList.toggle('d-none',distributionType.value!=='department');requestWrap.classList.add('d-none');};
-            distributionType.addEventListener('change',updateTargets);methodSelect.addEventListener('change',function(){requestWrap.classList.toggle('d-none',methodSelect.value!=='request');});requestSelect.addEventListener('change',function(){var option=requestSelect.selectedOptions[0];if(option&&option.dataset.department){targetSelect.value=option.dataset.department;}});updateTargets();
+        var postModal = document.getElementById('postMediaModal');
+        if (postModal) {
+            var postTypeInput = document.getElementById('postMediaType');
+            var postFolderIdInput = document.getElementById('postMediaFolderId');
+            var postFileIdsContainer = document.getElementById('postMediaFileIds');
+            var postTitleInput = document.getElementById('postDisplayTitle');
+
+            postModal.addEventListener('show.bs.modal', function(event) {
+                postFileIdsContainer.replaceChildren();
+                var button = event.relatedTarget;
+                if (!button || !button.dataset.postType) {
+                    var selected = document.querySelectorAll('[data-media-select]:checked');
+                    if (selected.length === 0) {
+                        event.preventDefault();
+                        return;
+                    }
+                    postTypeInput.value = 'files';
+                    postFolderIdInput.value = '';
+                    var seen = [];
+                    selected.forEach(function(box) {
+                        if (seen.indexOf(box.dataset.mediaId) === -1) {
+                            seen.push(box.dataset.mediaId);
+                            var hidden = document.createElement('input');
+                            hidden.type = 'hidden';
+                            hidden.name = 'file_ids[]';
+                            hidden.value = box.dataset.mediaId;
+                            postFileIdsContainer.appendChild(hidden);
+                        }
+                    });
+                    if (selected.length === 1) {
+                        var fileNameEl = selected[0].closest('tr') ? selected[0].closest('tr').querySelector('.file-name') : selected[0].closest('.media-grid-card').querySelector('.grid-file-name');
+                        if (fileNameEl) postTitleInput.value = fileNameEl.textContent.trim();
+                    } else {
+                        postTitleInput.value = 'Multiple Media Items';
+                    }
+                } else if (button.dataset.postType === 'folder') {
+                    postTypeInput.value = 'folder';
+                    postFolderIdInput.value = button.dataset.postTargetId;
+                    if (button.dataset.folderName) postTitleInput.value = button.dataset.folderName;
+                    else postTitleInput.value = 'Folder';
+                }
+
+                window.setTimeout(function() { postTitleInput.focus(); }, 250);
+            });
         }
 
         var uploadForm = document.getElementById('batchUploadForm');
@@ -606,7 +690,7 @@
             var fileCount = filesInput.files.length;
             var folderCount = folderInput.files.length;
             fileSelection.textContent = fileCount === 0 ? 'No files selected' : fileCount + ' file' + (fileCount === 1 ? '' : 's') + ' selected';
-            folderSelection.textContent = folderCount === 0 ? 'Keeps subfolders (Chrome or Edge)' : folderCount + ' folder file' + (folderCount === 1 ? '' : 's') + ' selected';
+            folderSelection.textContent = folderCount === 0 ? 'Keeps subfolders (Chrome or Edge)' : folderCount + ' file' + (folderCount === 1 ? '' : 's') + ' selected from folder';
             filesInput.closest('.upload-picker').classList.toggle('has-files', fileCount > 0);
             folderInput.closest('.upload-picker').classList.toggle('has-files', folderCount > 0);
             submitButton.disabled = fileCount + folderCount === 0;
@@ -624,6 +708,7 @@
         if (!window.fetch || !window.FormData) { return; }
 
         uploadForm.addEventListener('submit', async function (event) {
+            event.preventDefault();
             var queuedFiles = [];
             Array.prototype.forEach.call(filesInput.files, function (file) {
                 queuedFiles.push({ file: file, relativePath: '' });
@@ -631,23 +716,21 @@
             Array.prototype.forEach.call(folderInput.files, function (file) {
                 queuedFiles.push({ file: file, relativePath: file.webkitRelativePath || file.name });
             });
-            if (queuedFiles.length === 0) { return; }
-
-            event.preventDefault();
-            var displayTitle = document.getElementById('display_title').value.trim().replace(/\s+/g, ' ');
-            if (!displayTitle || displayTitle.length > 150) {
-                document.getElementById('display_title').setCustomValidity(displayTitle ? 'Display Title may not exceed 150 characters.' : 'Display Title is required.');
-                document.getElementById('display_title').reportValidity();
+            if (queuedFiles.length === 0) {
+                fileSelection.textContent = 'Choose one or more files, or browse a folder.';
+                submitButton.disabled = true;
                 return;
             }
-            document.getElementById('display_title').setCustomValidity('');
+
             var destinationFolder = document.getElementById('folder_id').value;
-            var description = document.getElementById('description').value;
             var csrfToken = csrfInput ? csrfInput.value : '';
             var completed = 0;
             var successful = 0;
             var errors = [];
             progress.classList.remove('d-none');
+            progressBar.classList.remove('bg-danger');
+            progressBar.classList.add('progress-bar-animated');
+            progressBar.style.width = '0%';
             submitButton.disabled = true;
 
             for (var index = 0; index < queuedFiles.length; index += 1) {
@@ -658,11 +741,8 @@
 
                 var formData = new FormData();
                 formData.append('file', item.file);
-                formData.append('display_title', displayTitle);
                 formData.append('folder_id', destinationFolder);
-                formData.append('description', description);
                 formData.append('relative_path', item.relativePath);
-                ['distribution_type','distribution_target','assignment_method','request_id'].forEach(function(name){var field=document.getElementById(name);if(field&&field.value){formData.append(name,field.value);}});
                 if (csrfInput) { formData.append(csrfInput.name, csrfToken); }
 
                 try {

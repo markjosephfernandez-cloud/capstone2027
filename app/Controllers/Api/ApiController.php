@@ -48,6 +48,25 @@ abstract class ApiController extends BaseController
         return is_array($raw) ? $raw : [];
     }
 
+    protected function externalUrl(string $path): string
+    {
+        $configuredUrl = site_url($path);
+        $host = $this->request->getHeaderLine('Host');
+        if ($host === '' || preg_match('/^[A-Za-z0-9.\-:\[\]]+$/', $host) !== 1) {
+            return $configuredUrl;
+        }
+
+        $configuredPath = parse_url($configuredUrl, PHP_URL_PATH);
+        if (! is_string($configuredPath) || $configuredPath === '') {
+            return $configuredUrl;
+        }
+
+        $scheme = $this->request->getUri()->getScheme();
+        $scheme = $scheme === 'https' ? 'https' : 'http';
+
+        return $scheme . '://' . $host . $configuredPath;
+    }
+
     protected function page(): int
     {
         return max(1, min(100000, (int) ($this->request->getGet('page') ?? 1)));

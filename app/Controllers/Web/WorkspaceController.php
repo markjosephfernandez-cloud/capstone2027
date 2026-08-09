@@ -11,6 +11,7 @@ use App\Models\RecentModel;
 use App\Models\TagModel;
 use App\Services\TrashService;
 use CodeIgniter\HTTP\Files\UploadedFile;
+use Config\GreyhoundAi;
 use RuntimeException;
 
 class WorkspaceController extends BaseController
@@ -36,13 +37,25 @@ class WorkspaceController extends BaseController
             $distribution = '';
         }
         $departmentUser = RolePolicy::role($actor) === 'department';
+        $hasFolderAssignments = $db->tableExists('media_assignment_folders');
+        $departmentFolderIds = [];
+        if ($departmentUser && $hasFolderAssignments) {
+            $departmentFolderIds = array_values(array_unique(array_map('intval', array_column(
+                $db->table('media_assignment_folders')
+                    ->select('folder_id')
+                    ->where('department', (string) ($actor['department'] ?? ''))
+                    ->get()
+                    ->getResultArray(),
+                'folder_id'
+            ))));
+        }
         $folderId = filter_var($this->request->getGet('folder'), FILTER_VALIDATE_INT);
         $folderId = $folderId !== false && $folderId > 0 ? $folderId : null;
-        if ($departmentUser || $query !== '') {
+        if ($query !== '') {
             $folderId = null;
         }
         $selectedFolder = $folderId === null ? null : (new FolderModel())->find($folderId);
-        if ($folderId !== null && $selectedFolder === null) {
+        if ($folderId !== null && ($selectedFolder === null || ($departmentUser && ! in_array($folderId, $departmentFolderIds, true)))) {
             return redirect()->to(site_url('workspace/file-management'))->with('error', 'The requested folder is unavailable.');
         }
 
@@ -56,12 +69,37 @@ class WorkspaceController extends BaseController
         } else {
             $folderQuery->where('fo.parent_id', $folderId);
         }
-        $folders = $departmentUser ? [] : $folderQuery
-            ->groupBy('fo.id, fo.name, fo.description, fo.path, fo.created_at')
-            ->orderBy('fo.name', 'ASC')
-            ->get()
-            ->getResultArray();
-        $allFolders = $departmentUser ? [] : (new FolderModel())->orderBy('name', 'ASC')->findAll();
+        if ($departmentUser && $hasFolderAssignments) {
+            $receivedFolders = $db->table('folder fo')
+                ->select('fo.id, fo.parent_id, fo.name, fo.description, fo.path, fo.created_at, COUNT(DISTINCT ma.media_id) AS file_count')
+                ->join('media_assignment_folders maf', 'maf.folder_id = fo.id', 'inner')
+                ->join('files f', "f.folder_id = fo.id AND f.is_deleted = 0", 'left')
+                ->join('media_assignments ma', 'ma.media_id = f.id AND ma.department = maf.department', 'left')
+                ->where('maf.department', (string) ($actor['department'] ?? ''))
+                ->groupBy('fo.id, fo.parent_id, fo.name, fo.description, fo.path, fo.created_at')
+                ->get()
+                ->getResultArray();
+            $receivedFolderIds = array_values(array_unique(array_map('intval', array_column($receivedFolders, 'id'))));
+            $receivedFolderSet = array_fill_keys($receivedFolderIds, true);
+            $folders = array_values(array_filter($receivedFolders, static function (array $folder) use ($folderId, $query, $receivedFolderSet): bool {
+                if ($query !== '') {
+                    return stripos((string) $folder['name'], $query) !== false;
+                }
+                if ($folderId !== null) {
+                    return (int) ($folder['parent_id'] ?? 0) === $folderId;
+                }
+                $parentId = empty($folder['parent_id']) ? 0 : (int) $folder['parent_id'];
+                return $parentId === 0 || ! isset($receivedFolderSet[$parentId]);
+            }));
+            $allFolders = $receivedFolders;
+        } else {
+            $folders = $departmentUser ? [] : $folderQuery
+                ->groupBy('fo.id, fo.name, fo.description, fo.path, fo.created_at')
+                ->orderBy('fo.name', 'ASC')
+                ->get()
+                ->getResultArray();
+            $allFolders = $departmentUser ? [] : (new FolderModel())->orderBy('name', 'ASC')->findAll();
+        }
         $folderById = [];
         foreach ($allFolders as $folder) {
             $folderById[(int) $folder['id']] = $folder;
@@ -91,6 +129,11 @@ class WorkspaceController extends BaseController
         } elseif ($folderId === null) {
             if (! $departmentUser) {
                 $files->where('f.folder_id IS NULL', null, false);
+            } elseif ($departmentFolderIds !== []) {
+                $files->groupStart()
+                    ->where('f.folder_id IS NULL', null, false)
+                    ->orWhereNotIn('f.folder_id', $departmentFolderIds)
+                    ->groupEnd();
             }
         } else {
             $files->where('f.folder_id', $folderId);
@@ -152,25 +195,7 @@ class WorkspaceController extends BaseController
         $folderId    = $requestedFolderId === null || $requestedFolderId === ''
             ? null
             : filter_var($requestedFolderId, FILTER_VALIDATE_INT);
-        try {
-            $displayTitle = MediaTitle::validate($this->request->getPost('display_title'));
-        } catch (\InvalidArgumentException $exception) {
-            return $this->uploadResult([], [$exception->getMessage()]);
-        }
         $description = trim((string) $this->request->getPost('description'));
-        $distributionType = trim((string) $this->request->getPost('distribution_type'));
-        $distributionTarget = trim(mb_substr((string) $this->request->getPost('distribution_target'), 0, 150));
-        $assignmentMethod = trim((string) $this->request->getPost('assignment_method'));
-        $requestId = filter_var($this->request->getPost('request_id'), FILTER_VALIDATE_INT) ?: null;
-        if (! in_array($distributionType, ['', 'mobile_app', 'department'], true)) {
-            return $this->uploadResult([], ['Choose a valid distribution type.']);
-        }
-        if ($distributionType !== '' && $distributionTarget === '') {
-            return $this->uploadResult([], ['Choose where the uploaded media will be published or assigned.']);
-        }
-        if ($distributionType === 'department' && $assignmentMethod === 'request' && $requestId === null) {
-            return $this->uploadResult([], ['Choose an existing department request.']);
-        }
         if (mb_strlen($description) > 5000) {
             return $this->uploadResult([], ['Description may not exceed 5,000 characters.']);
         }
@@ -199,6 +224,10 @@ class WorkspaceController extends BaseController
             $stored    = null;
             $persisted = false;
             $transactionOpen = false;
+            $displayTitle = mb_substr(pathinfo($uploaded->getClientName(), PATHINFO_FILENAME), 0, 150);
+            if (trim($displayTitle) === '') {
+                $displayTitle = 'Uploaded File';
+            }
             $name      = $displayTitle;
 
             try {
@@ -258,11 +287,11 @@ class WorkspaceController extends BaseController
                     'folder_id'      => $folderId === null ? null : (int) $folderId,
                     'is_deleted'     => 0,
                     'downloadable'   => 1,
-                    'release_status' => 'published',
-                    'featured'       => 1,
+                    'release_status' => 'draft',
+                    'featured'       => 0,
                     'storage_stage' => 'raw',
-                    'distribution_type' => $distributionType === '' ? null : $distributionType,
-                    'distribution_target' => $distributionTarget === '' ? null : $distributionTarget,
+                    'distribution_type' => null,
+                    'distribution_target' => null,
                     'content_hash'   => $contentHash ?: null,
                     'last_action'    => 'uploaded',
                     'last_action_at' => gmdate('Y-m-d H:i:s'),
@@ -274,24 +303,6 @@ class WorkspaceController extends BaseController
 
                 service('audit')->record($actor, $this->request, 'upload', 'UPLOAD', 'file', (int) $fileId, 'Uploaded "' . $stored['filename'] . '" through the web interface.');
                 $this->runPostUploadAutomation((int) $fileId, $actor);
-                $publishedAt = gmdate('Y-m-d H:i:s');
-                (new FileModel())->update((int) $fileId, [
-                    'storage_stage'      => 'processed',
-                    'processed_at'       => $publishedAt,
-                    'release_status'     => 'published',
-                    'featured'           => 1,
-                    'published_at'       => $publishedAt,
-                    'publication_channel'=> $distributionType === 'mobile_app' ? $distributionTarget : ($distributionTarget !== '' ? $distributionTarget : 'General Events'),
-                    'last_action'        => 'published',
-                    'last_action_at'     => $publishedAt,
-                    'updated_at'         => $publishedAt,
-                ]);
-                if ($distributionType === 'mobile_app') {
-                    (new FileModel())->update((int) $fileId, ['publication_channel' => $distributionTarget]);
-                } elseif ($distributionType === 'department') {
-                    $method = $assignmentMethod === 'request' ? 'request' : 'direct';
-                    service('distribution')->assign([(int) $fileId], $distributionTarget, $method === 'request' ? $requestId : null, $method, $actor);
-                }
                 $db->transComplete();
                 $transactionOpen = false;
                 if (! $db->transStatus()) {
@@ -325,6 +336,34 @@ class WorkspaceController extends BaseController
         }
 
         return $this->uploadResult($successful, $errors);
+    }
+
+    public function downloads()
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+
+        $actor = session()->get();
+        if (RolePolicy::role($actor) !== 'department') {
+            return redirect()->to(site_url('workspace/file-management'));
+        }
+
+        $files = db_connect()->table('files f')
+            ->select('f.*, MAX(ma.sent_at) AS assigned_at')
+            ->join('media_assignments ma', 'ma.media_id = f.id', 'inner')
+            ->where('ma.department', (string) ($actor['department'] ?? ''))
+            ->where('f.is_deleted', 0)
+            ->where('f.downloadable', 1)
+            ->groupBy('f.id')
+            ->orderBy('assigned_at', 'DESC')
+            ->limit(100)
+            ->get()
+            ->getResultArray();
+
+        return view('workspace/downloads', $this->pageData('downloads', 'Downloads', [
+            'files' => $files,
+        ]));
     }
 
     public function addTags()
@@ -691,12 +730,25 @@ class WorkspaceController extends BaseController
             return $this->response->setStatusCode(404)->setBody('Image preview is unavailable for this file type.');
         }
 
-        return $this->response
-            ->download($path, null, true)
-            ->setFileName($this->previewName($file))
-            ->setContentType($mimeType)
-            ->inline()
-            ->noCache();
+        return $this->inlineMediaResponse($path, $mimeType);
+    }
+
+    /** Streams a safely stored video for an authorized workspace viewer. */
+    public function videoPreview(int $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+
+        $file = (new FileModel())->where('is_deleted', 0)->find($id);
+        if ($file === null) {
+            return $this->response->setStatusCode(404)->setBody('Video not found.');
+        }
+        if (! $this->canAccessMedia($file, session()->get())) {
+            return $this->response->setStatusCode(403)->setBody('This file is not assigned to your department.');
+        }
+
+        return $this->streamMediaPreview($file);
     }
 
     /** Streams deleted image or video media without restoring it from Trash. */
@@ -1173,6 +1225,115 @@ class WorkspaceController extends BaseController
         ]));
     }
 
+    public function reviewEvent(int $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+
+        $actor = session()->get();
+        if (! RolePolicy::allows($actor, 'files.manage')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Your role is not allowed to review AI classifications.');
+        }
+
+        $file = (new FileModel())->where('is_deleted', 0)->find($id);
+        if ($file === null) {
+            return redirect()->to(site_url('workspace/ifound'))->with('error', 'The requested media file is unavailable.');
+        }
+
+        $eventName = trim(mb_substr((string) $this->request->getPost('event_name'), 0, 150));
+        $allowedEvents = array_keys((new GreyhoundAi())->eventKeywords);
+        if ($eventName !== '' && ! in_array($eventName, $allowedEvents, true)) {
+            return $this->redirectToIFound()->with('error', 'Choose a supported university event classification.');
+        }
+
+        $reviewNote = trim(mb_substr((string) $this->request->getPost('review_note'), 0, 500));
+        $db = db_connect();
+        if (! $db->tableExists('ai_event_detections')) {
+            return $this->redirectToIFound()->with('error', 'AI review records are not available yet.');
+        }
+        $detection = $db->table('ai_event_detections')->where('media_id', $id)->get()->getRowArray();
+        if ($detection === null) {
+            return $this->redirectToIFound()->with('error', 'This media file has not been processed by iFound yet.');
+        }
+
+        $tags = $this->reviewedEventTags($file, $eventName === '' ? null : $eventName);
+        $db->transStart();
+        (new FileModel())->update($id, [
+            'classification'   => $eventName !== '' ? $eventName : 'Unclassified university media',
+            'detected_objects' => $eventName !== '' ? 'event: ' . $eventName : null,
+            'tags'             => implode(', ', $tags),
+            'last_action'      => 'classification reviewed',
+            'last_action_at'   => gmdate('Y-m-d H:i:s'),
+        ]);
+        $db->table('ai_event_detections')->where('id', (int) $detection['id'])->update([
+            'event_name'   => $eventName !== '' ? $eventName : null,
+            'needs_review' => 0,
+            'reviewed_by'  => (int) ($actor['employee_id'] ?? 0),
+            'reviewed_at'  => gmdate('Y-m-d H:i:s'),
+            'review_note'  => $reviewNote !== '' ? $reviewNote : null,
+        ]);
+        (new TagModel())->where('file_id', $id)->delete();
+        foreach ($tags as $tag) {
+            (new TagModel())->insert([
+                'tag'      => $tag,
+                'type'     => $this->reviewTagType((string) ($file['filetype'] ?? '')),
+                'filepath' => (string) ($file['filepath'] ?? ''),
+                'file_id'  => $id,
+            ]);
+        }
+        $db->transComplete();
+        if (! $db->transStatus()) {
+            return $this->redirectToIFound()->with('error', 'The AI classification review could not be saved.');
+        }
+
+        $classification = $eventName !== '' ? $eventName : 'Unclassified university media';
+        service('audit')->record($actor, $this->request, 'metadata', 'AI_CLASSIFICATION_REVIEWED', 'file', $id, 'Reviewed iFound classification for "' . $file['filename'] . '" as ' . $classification . '.');
+
+        return $this->redirectToIFound()->with('success', 'Review saved. The file is now marked Ready.');
+    }
+
+    private function redirectToIFound()
+    {
+        $term = trim(mb_substr((string) $this->request->getPost('return_q'), 0, 120));
+        $url = site_url('workspace/ifound');
+        if ($term !== '') {
+            $url .= '?q=' . rawurlencode($term);
+        }
+
+        return redirect()->to($url);
+    }
+
+    /** @param array<string, mixed> $file @return list<string> */
+    private function reviewedEventTags(array $file, ?string $eventName): array
+    {
+        $eventTags = array_keys((new GreyhoundAi())->eventKeywords);
+        $excluded = array_fill_keys(array_map('mb_strtolower', array_merge($eventTags, ['AI Review Needed'])), true);
+        $tags = [];
+        foreach (preg_split('/\s*,\s*/u', (string) ($file['tags'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $tag) {
+            $tag = trim($tag);
+            if ($tag !== '' && ! isset($excluded[mb_strtolower($tag)])) {
+                $tags[mb_strtolower($tag)] = $tag;
+            }
+        }
+        if ($eventName !== null) {
+            foreach ([$eventName, 'AI Classified', 'University Event'] as $tag) {
+                $tags[mb_strtolower($tag)] = $tag;
+            }
+        }
+
+        return array_slice(array_values($tags), 0, 30);
+    }
+
+    private function reviewTagType(string $extension): string
+    {
+        return match (strtolower($extension)) {
+            'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v' => 'video',
+            'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac' => 'audio',
+            default => 'image',
+        };
+    }
+
     public function trash()
     {
         if (($redirect = $this->requireLogin()) !== null) {
@@ -1240,11 +1401,68 @@ class WorkspaceController extends BaseController
             return $this->response->setStatusCode(404)->setBody('Media preview not found.');
         }
         $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
-        $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'video/mp4', 'video/webm', 'video/quicktime'];
+        $allowed = [
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
+            'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+            'video/x-matroska', 'video/x-m4v',
+        ];
         if (! is_string($mimeType) || ! in_array($mimeType, $allowed, true)) {
             return $this->response->setStatusCode(415)->setBody('Preview is unavailable for this file type.');
         }
-        return $this->response->download($path, null, true)->setFileName($this->previewName($file))->setContentType($mimeType)->inline()->noCache();
+        return $this->inlineMediaResponse($path, $mimeType);
+    }
+
+    /**
+     * Return a browser-native image or video response for media cards.
+     * Video ranges let the browser fetch metadata and a poster frame without
+     * downloading the whole file before rendering a thumbnail.
+     */
+    private function inlineMediaResponse(string $path, string $mimeType)
+    {
+        $size = filesize($path);
+        if ($size === false || $size < 1) {
+            return $this->response->setStatusCode(404)->setBody('Media preview not found.');
+        }
+
+        $start = 0;
+        $end = $size - 1;
+        $status = 200;
+        $range = $this->request->getHeaderLine('Range');
+        if (preg_match('/bytes=(\d*)-(\d*)/i', $range, $matches) === 1) {
+            if ($matches[1] === '' && $matches[2] !== '') {
+                $suffixLength = min((int) $matches[2], $size);
+                $start = $size - $suffixLength;
+            } elseif ($matches[1] !== '') {
+                $start = (int) $matches[1];
+                $end = $matches[2] === '' ? $end : min((int) $matches[2], $end);
+            }
+
+            if ($start > $end || $start >= $size) {
+                return $this->response
+                    ->setStatusCode(416)
+                    ->setHeader('Content-Range', 'bytes */' . $size)
+                    ->setBody('Requested media range is unavailable.');
+            }
+            $status = 206;
+        }
+
+        $length = $end - $start + 1;
+        $body = file_get_contents($path, false, null, $start, $length);
+        if ($body === false) {
+            return $this->response->setStatusCode(404)->setBody('Media preview not found.');
+        }
+
+        $response = $this->response
+            ->setStatusCode($status)
+            ->setHeader('Accept-Ranges', 'bytes')
+            ->setHeader('Content-Type', $mimeType)
+            ->setHeader('Content-Length', (string) $length)
+            ->setBody($body)
+            ->noCache();
+
+        return $status === 206
+            ? $response->setHeader('Content-Range', 'bytes ' . $start . '-' . $end . '/' . $size)
+            : $response;
     }
 
     /** @param array<string, mixed> $actor */
@@ -1256,8 +1474,12 @@ class WorkspaceController extends BaseController
     /** @param array<string, mixed> $file @param array<string, mixed> $actor */
     private function canAccessMedia(array $file, array $actor): bool
     {
+        // Global media access must take precedence over department-only access.
+        if (RolePolicy::allows($actor, 'files.view_all')) {
+            return true;
+        }
         if (! RolePolicy::allows($actor, 'files.view_assigned')) {
-            return RolePolicy::allows($actor, 'files.view_all');
+            return false;
         }
         return db_connect()->table('media_assignments')
             ->where('media_id', (int) $file['id'])
@@ -1535,5 +1757,169 @@ class WorkspaceController extends BaseController
         }
 
         return $messages;
+    }
+
+    public function postMedia()
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+        $actor = session()->get();
+        if (! \App\Libraries\RolePolicy::allows($actor, 'files.manage')) {
+            return redirect()->back()->with('error', 'You do not have permission to post media.');
+        }
+
+        $postType = $this->request->getPost('post_type');
+        $displayTitle = trim((string) $this->request->getPost('display_title'));
+        $channel = trim((string) $this->request->getPost('channel'));
+        $description = trim((string) $this->request->getPost('description'));
+        $publishedAt = gmdate('Y-m-d H:i:s');
+        $employeeId = (int) $actor['employee_id'];
+
+        if ($displayTitle === '' || $channel === '') {
+            return redirect()->back()->with('error', 'Display title and channel are required.');
+        }
+
+        $db = db_connect();
+        $db->transStart();
+
+        if ($postType === 'folder') {
+            $folderId = (int) $this->request->getPost('folder_id');
+            $folderModel = new \App\Models\FolderModel();
+            $folder = $folderModel->find($folderId);
+            if (! $folder) {
+                return redirect()->back()->with('error', 'Folder not found.');
+            }
+            $folderModel->update($folderId, [
+                'publication_channel' => $channel,
+                'published_at' => $publishedAt,
+                'published_by' => $employeeId,
+                'description' => $description !== '' ? $description : $folder['description'],
+                'name' => $displayTitle,
+            ]);
+            service('audit')->record($actor, $this->request, 'publish', 'FOLDER_PUBLISHED', 'folder', $folderId, 'Published folder "' . $displayTitle . '" to Mobile App. Channel: ' . $channel . '.');
+        } else if ($postType === 'files') {
+            $fileIds = $this->request->getPost('file_ids') ?? [];
+            if (empty($fileIds)) {
+                return redirect()->back()->with('error', 'No files selected.');
+            }
+            $fileModel = new \App\Models\FileModel();
+            foreach ($fileIds as $fileId) {
+                $file = $fileModel->find((int) $fileId);
+                if ($file) {
+                    $publishedTitle = count($fileIds) === 1 ? $displayTitle : \App\Libraries\MediaTitle::forFile($file);
+                    $fileModel->update((int) $fileId, [
+                        'publication_channel' => $channel,
+                        'published_at' => $publishedAt,
+                        'published_by' => $employeeId,
+                        'description' => $description !== '' ? $description : $file['description'],
+                        'display_title' => count($fileIds) === 1 ? $displayTitle : $file['display_title'],
+                        'release_status' => 'published',
+                    ]);
+                    service('audit')->record($actor, $this->request, 'publish', 'FILE_PUBLISHED', 'file', (int) $fileId, 'Published file "' . $publishedTitle . '" to Mobile App. Channel: ' . $channel . '.');
+                }
+            }
+        } else {
+            return redirect()->back()->with('error', 'Invalid post type.');
+        }
+
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            return redirect()->back()->with('error', 'Failed to post media.');
+        }
+
+        return redirect()->to(site_url('workspace/published-files'))->with('message', 'Media successfully posted.');
+    }
+
+    public function publishedFiles($folderId = null)
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+        $actor = session()->get();
+        if (! \App\Libraries\RolePolicy::allows($actor, 'files.manage')) {
+            return redirect()->to(site_url('dashboard'))->with('error', 'Access denied.');
+        }
+
+        $folderModel = new \App\Models\FolderModel();
+        $fileModel = new \App\Models\FileModel();
+        $userModel = new \App\Models\UserModel();
+
+        $users = [];
+        foreach ($userModel->findAll() as $u) {
+            $users[$u['employee_id']] = $u;
+        }
+
+        $parentFolder = null;
+        if ($folderId) {
+            $parentFolder = $folderModel->find((int)$folderId);
+            if (!$parentFolder) {
+                return redirect()->to(site_url('workspace/published-files'))->with('error', 'Folder not found.');
+            }
+            $folders = [];
+            if (empty($parentFolder['publication_channel'])) {
+                return redirect()->to(site_url('workspace/published-files'))->with('error', 'This folder has not been published yet.');
+            }
+            $files = $fileModel
+                ->where('folder_id', (int) $folderId)
+                ->where('is_deleted', 0)
+                ->orderBy('dateupload', 'DESC')
+                ->findAll();
+
+            // Inherit publisher info from folder for the files
+            foreach ($files as &$f) {
+                $f['published_by'] = $parentFolder['published_by'] ?? $f['employee_id'];
+                $f['published_at'] = $parentFolder['published_at'] ?? $f['published_at'] ?? $f['dateupload'];
+                $f['publication_channel'] = $parentFolder['publication_channel'];
+            }
+        } else {
+            $folders = $folderModel
+                ->where('publication_channel IS NOT NULL')
+                ->orderBy('published_at', 'DESC')
+                ->findAll();
+            $publishedFolderIds = array_map('intval', array_column($folders, 'id'));
+            $filesQuery = $fileModel
+                ->where('is_deleted', 0)
+                ->where('release_status', 'published')
+                ->groupStart()
+                    ->where('folder_id IS NULL', null, false);
+
+            // Files from a published folder are represented by that folder card.
+            // Individually posted files in ordinary folders remain visible here.
+            if ($publishedFolderIds !== []) {
+                $filesQuery->orWhereNotIn('folder_id', $publishedFolderIds);
+            }
+
+            $files = $filesQuery
+                ->groupEnd()
+                ->orderBy('published_at', 'DESC')
+                ->orderBy('dateupload', 'DESC')
+                ->findAll();
+        }
+
+        foreach ($folders as &$f) {
+            $publisher = $users[$f['published_by']] ?? null;
+            $f['publisher_name'] = $publisher ? $publisher['name'] : 'Unknown';
+            $f['file_count'] = (int) $fileModel
+                ->where('folder_id', (int) $f['id'])
+                ->where('is_deleted', 0)
+                ->countAllResults();
+        }
+        foreach ($files as &$f) {
+            $publisherId = $f['published_by'] ?? $f['employee_id'];
+            $publisher = $users[$publisherId] ?? null;
+            $f['publisher_name'] = $publisher ? $publisher['name'] : 'Unknown';
+        }
+
+        return view('workspace/published_files', [
+            'activePage' => 'published-files',
+            'folders' => $folders,
+            'files' => $files,
+            'parentFolder' => $parentFolder,
+            'user' => $actor,
+            'role' => $actor['role'],
+            'canManage' => true,
+        ]);
     }
 }

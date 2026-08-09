@@ -6,6 +6,28 @@ use App\Controllers\BaseController;
 
 class NotificationController extends BaseController
 {
+    public function index()
+    {
+        if (session()->get('isLoggedIn') !== true) {
+            return redirect()->to(site_url('login'));
+        }
+
+        $userId = (string) session()->get('employee_id');
+        $notifications = db_connect()->table('notifications')
+            ->where('recipient_id', $userId)
+            ->orderBy('created_at', 'DESC')
+            ->limit(100)
+            ->get()
+            ->getResultArray();
+
+        return view('notifications/index', [
+            'user' => session()->get(),
+            'activePage' => 'notifications',
+            'title' => 'Notifications',
+            'notifications' => $notifications,
+        ]);
+    }
+
     public function read(int $id)
     {
         if (session()->get('isLoggedIn') !== true) {

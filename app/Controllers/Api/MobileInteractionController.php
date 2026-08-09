@@ -41,7 +41,7 @@ class MobileInteractionController extends ApiController
             ->where('c.file_id', $id)->orderBy('c.created_at', 'ASC')->get()->getResultArray();
         foreach ($rows as &$row) {
             $row['username'] = $row['username'] ?: $row['name'];
-            $row['profile_image_url'] = $row['profile_image'] ? site_url('api/v1/mobile/profile/avatar/' . $row['employee_id']) : null;
+            $row['profile_image_url'] = $row['profile_image'] ? $this->externalUrl('api/v1/mobile/profile/avatar/' . $row['employee_id']) : null;
             unset($row['profile_image']);
         }
         return $this->success($rows, 200, ['count' => count($rows)]);

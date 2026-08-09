@@ -26,12 +26,18 @@ $routes->post('workspace/file-management/tags', 'Web\\WorkspaceController::addTa
 $routes->get('workspace/file-management/duplicates', 'Web\\WorkspaceController::duplicateQueue');
 $routes->post('workspace/file-management/bulk-download', 'Web\\WorkspaceController::bulkDownload', ['filter' => 'csrf']);
 $routes->post('workspace/file-management/bulk-trash', 'Web\\WorkspaceController::bulkTrash', ['filter' => 'csrf']);
+$routes->post('workspace/file-management/post', 'Web\\WorkspaceController::postMedia', ['filter' => 'csrf']);
+$routes->get('workspace/published-files', 'Web\\WorkspaceController::publishedFiles');
+$routes->get('workspace/published-files/(:num)', 'Web\\WorkspaceController::publishedFiles/$1');
 $routes->get('workspace/file-management/(:num)/preview', 'Web\\WorkspaceController::preview/$1');
+$routes->get('workspace/file-management/(:num)/video-preview', 'Web\\WorkspaceController::videoPreview/$1');
 $routes->get('workspace/file-management/(:num)/watermarked-preview', 'Web\\WorkspaceController::watermarkedPreview/$1');
 $routes->get('workspace/file-management/(:num)/download', 'Web\\WorkspaceController::download/$1');
 $routes->post('workspace/file-management/(:num)/trash', 'Web\\WorkspaceController::moveToTrash/$1', ['filter' => 'csrf']);
 $routes->get('workspace/recent', 'Web\\WorkspaceController::recent');
 $routes->get('workspace/ifound', 'Web\\WorkspaceController::ifound');
+$routes->post('workspace/ifound/(:num)/review', 'Web\\WorkspaceController::reviewEvent/$1', ['filter' => 'csrf']);
+$routes->get('workspace/downloads', 'Web\\WorkspaceController::downloads');
 $routes->get('workspace/trash', 'Web\\WorkspaceController::trash');
 $routes->get('workspace/trash/(:num)/preview', 'Web\\WorkspaceController::trashPreview/$1');
 $routes->post('workspace/trash/(:num)/restore', 'Web\\WorkspaceController::restoreFromTrash/$1', ['filter' => 'csrf']);
@@ -51,6 +57,7 @@ $routes->post('workspace/distribution/requests', 'Web\\DistributionController::r
 $routes->post('workspace/distribution/requests/(:num)/transmit', 'Web\\DistributionController::transmit/$1', ['filter' => 'csrf']);
 $routes->post('workspace/distribution/requests/(:num)/complete', 'Web\\DistributionController::complete/$1', ['filter' => 'csrf']);
 $routes->post('workspace/distribution/direct-send', 'Web\\DistributionController::directSend', ['filter' => 'csrf']);
+$routes->get('workspace/notifications', 'Web\\NotificationController::index');
 $routes->post('notifications/(:num)/read', 'Web\\NotificationController::read/$1', ['filter' => 'csrf']);
 $routes->get('workspace/audit-logs', 'Web\\AddonsController::auditLogs');
 $routes->get('workspace/(:segment)', 'Web\\FeatureController::show/$1');
@@ -68,6 +75,10 @@ $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api', 'filter' => 'a
         'MobileFeedController::preview/$1'
     );
     $routes->get(
+        'mobile/media/(:num)/stream',
+        'MobileFeedController::stream/$1'
+    );
+    $routes->head(
         'mobile/media/(:num)/stream',
         'MobileFeedController::stream/$1'
     );

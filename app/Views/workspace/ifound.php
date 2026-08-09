@@ -1,5 +1,8 @@
 <?= view('layouts/app_header', ['user' => $user, 'activePage' => $activePage, 'title' => $title]) ?>
-<?php $previewableImageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp']; ?>
+<?php
+$previewableImageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+$eventOptions = array_keys((new \Config\GreyhoundAi())->eventKeywords);
+?>
 <main id="main" class="main">
     <div class="pagetitle d-flex align-items-start justify-content-between flex-wrap gap-2">
         <div>
@@ -57,6 +60,19 @@
                                         <?php endif; ?>
                                     </td>
                                     <td class="text-end text-nowrap">
+                                        <?php if ((int) ($result['needs_review'] ?? 1) === 1): ?>
+                                            <button
+                                                class="btn btn-outline-warning btn-sm ifound-review-button"
+                                                type="button"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#ifoundReviewModal"
+                                                data-file-id="<?= (int) $result['id'] ?>"
+                                                data-file-name="<?= esc(\App\Libraries\MediaTitle::forFile($result), 'attr') ?>"
+                                                data-event-name="<?= esc((string) ($result['event_name'] ?? ''), 'attr') ?>"
+                                                data-confidence="<?= $result['confidence_score'] === null ? 'No confidence score' : esc(number_format((float) $result['confidence_score'], 2) . '%', 'attr') ?>">
+                                                <i class="bi bi-check2-square me-1"></i> Review
+                                            </button>
+                                        <?php endif; ?>
                                         <?php if ($isPreviewableImage): ?>
                                             <a class="btn btn-outline-secondary btn-sm" href="<?= esc(site_url('workspace/file-management/' . (int) $result['id'] . '/preview')) ?>" target="_blank" rel="noopener" aria-label="Preview <?= esc(\App\Libraries\MediaTitle::forFile($result)) ?>">
                                                 <i class="bi bi-eye me-1"></i> Preview
@@ -78,4 +94,60 @@
         </div>
     </section>
 </main>
+<div class="modal fade" id="ifoundReviewModal" tabindex="-1" aria-labelledby="ifoundReviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" id="ifoundReviewForm">
+            <?= csrf_field() ?>
+            <input type="hidden" name="return_q" value="<?= esc($term) ?>">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="ifoundReviewModalLabel">Review AI Classification</h5>
+                    <p class="small text-muted mb-0" id="ifoundReviewFile"></p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="rounded border bg-light p-3 mb-3">
+                    <div class="small text-muted">AI suggestion</div>
+                    <div class="fw-semibold" id="ifoundReviewSuggestion">Not classified</div>
+                    <div class="small text-muted mt-1" id="ifoundReviewConfidence"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="ifoundReviewEvent">Final classification</label>
+                    <select class="form-select" id="ifoundReviewEvent" name="event_name">
+                        <option value="">Unclassified university media</option>
+                        <?php foreach ($eventOptions as $eventOption): ?>
+                            <option value="<?= esc($eventOption) ?>"><?= esc($eventOption) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="ifoundReviewNote">Review note <span class="text-muted">(optional)</span></label>
+                    <textarea class="form-control" id="ifoundReviewNote" name="review_note" rows="3" maxlength="500" placeholder="Why was this classification approved or corrected?"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i> Save review</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+document.querySelectorAll('.ifound-review-button').forEach(function (button) {
+    button.addEventListener('click', function () {
+        var form = document.getElementById('ifoundReviewForm');
+        var eventSelect = document.getElementById('ifoundReviewEvent');
+        var eventName = button.dataset.eventName || '';
+        form.action = <?= json_encode(site_url('workspace/ifound')) ?> + '/' + button.dataset.fileId + '/review';
+        document.getElementById('ifoundReviewFile').textContent = button.dataset.fileName;
+        document.getElementById('ifoundReviewSuggestion').textContent = eventName || 'Not classified';
+        document.getElementById('ifoundReviewConfidence').textContent = button.dataset.confidence;
+        eventSelect.value = Array.prototype.some.call(eventSelect.options, function (option) {
+            return option.value === eventName;
+        }) ? eventName : '';
+        document.getElementById('ifoundReviewNote').value = '';
+    });
+});
+</script>
 <?= view('layouts/app_footer') ?>

@@ -19,7 +19,7 @@ class AuditService
             return;
         }
 
-        $this->db->table('audit_logs')->insert([
+        $payload = [
             'user_id'     => (string) $actor['employee_id'],
             'user_name'   => $actor['name'] ?? null,
             'department'  => $actor['department'] ?? null,
@@ -30,6 +30,12 @@ class AuditService
             'description' => $description,
             'ip_address'  => $request->getIPAddress(),
             'created_at'  => Time::now('UTC')->toDateTimeString(),
-        ]);
+        ];
+
+        if (in_array('user_role', $this->db->getFieldNames('audit_logs'), true)) {
+            $payload['user_role'] = (string) ($actor['role'] ?? 'unknown');
+        }
+
+        $this->db->table('audit_logs')->insert($payload);
     }
 }

@@ -3,8 +3,10 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
+use App\Libraries\MediaTitle;
 use App\Libraries\RolePolicy;
 use App\Models\FileModel;
+use App\Models\FolderModel;
 use RuntimeException;
 
 class DistributionController extends BaseController
@@ -29,15 +31,23 @@ class DistributionController extends BaseController
             $requests->where('r.department', (string) ($actor['department'] ?? ''));
         }
         $requests = $requests->groupBy('r.id')->orderBy('r.updated_at', 'DESC')->limit(100)->get()->getResultArray();
+        $requestFiles = $this->requestFiles(array_map(static fn (array $request): int => (int) $request['id'], $requests));
         $direct = $db->table('media_assignments ma')->select('ma.department, ma.sent_by, ma.sent_at, ma.status, u.name AS sender_name, COUNT(*) AS file_count')->join('user u', 'u.employee_id = ma.sent_by', 'left')->where('ma.method', 'direct');
         if ($role === 'department') {
             $direct->where('ma.department', (string) ($actor['department'] ?? ''));
         }
         $direct = $direct->groupBy('ma.department, ma.sent_by, ma.sent_at, ma.status, u.name')->orderBy('ma.sent_at', 'DESC')->limit(100)->get()->getResultArray();
-        $files = RolePolicy::allows($actor, 'files.assign') ? (new FileModel())->where('is_deleted', 0)->where('storage_stage', 'processed')->orderBy('dateupload', 'DESC')->findAll(100) : [];
+        $files = RolePolicy::allows($actor, 'files.assign') ? (new FileModel())->where('is_deleted', 0)->where('storage_stage', 'processed')->orderBy('dateupload', 'DESC')->findAll(500) : [];
+        $folders = RolePolicy::allows($actor, 'files.assign') ? $db->table('folder fo')
+            ->select('fo.id, fo.parent_id, fo.name, fo.path, COUNT(f.id) AS file_count')
+            ->join('files f', "f.folder_id = fo.id AND f.is_deleted = 0 AND f.storage_stage = 'processed'", 'left')
+            ->groupBy('fo.id, fo.parent_id, fo.name, fo.path')
+            ->orderBy('fo.name', 'ASC')
+            ->get()
+            ->getResultArray() : [];
         $departments = RolePolicy::allows($actor, 'files.assign') ? $db->table('user')->select('department')->where('department !=', '')->groupBy('department')->orderBy('department')->get()->getResultArray() : [];
         $actions = $db->table('distribution_actions')->orderBy('created_at', 'DESC')->limit(200)->get()->getResultArray();
-        return view('distribution/index', ['user' => $actor, 'activePage' => 'distribution', 'title' => 'Distribution Workflow', 'requests' => $requests, 'directSends' => $direct, 'files' => $files, 'departments' => $departments, 'actions' => $actions, 'canManage' => RolePolicy::allows($actor, 'distribution.manage'), 'isDepartment' => $role === 'department', 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]);
+        return view('distribution/index', ['user' => $actor, 'activePage' => 'distribution', 'title' => 'Distribution Workflow', 'requests' => $requests, 'requestFiles' => $requestFiles, 'directSends' => $direct, 'files' => $files, 'folders' => $folders, 'departments' => $departments, 'actions' => $actions, 'canManage' => RolePolicy::allows($actor, 'distribution.manage'), 'isDepartment' => $role === 'department', 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]);
     }
 
     public function requestMedia()
@@ -53,7 +63,7 @@ class DistributionController extends BaseController
         }
         try {
             service('distribution')->createRequest($actor, $title, $description);
-            service('audit')->record($actor, $this->request, 'distribution', 'REQUEST_SUBMITTED', 'media_request', 0, 'Submitted department request "' . $title . '".');
+            service('audit')->record($actor, $this->request, 'distribution', 'REQUEST_MEDIA', 'media_request', 0, 'Requested media "' . $title . '" for ' . (string) ($actor['department'] ?? 'Unknown department') . '.');
             return redirect()->to(site_url('workspace/distribution'))->with('success', 'Media request submitted to Creative Staff.');
         } catch (RuntimeException $exception) {
             return redirect()->to(site_url('workspace/distribution'))->with('error', $exception->getMessage());
@@ -86,6 +96,13 @@ class DistributionController extends BaseController
         $db->transStart();
         $db->table('media_requests')->where('id', $requestId)->update(['status' => 'completed', 'completed_by' => (int) $actor['employee_id'], 'completed_at' => $now, 'updated_at' => $now]);
         $db->table('media_assignments')->where('request_id', $requestId)->update(['status' => 'completed', 'completed_by' => (int) $actor['employee_id'], 'completed_at' => $now]);
+        if ($db->tableExists('media_assignment_folders')) {
+            $db->table('media_assignment_folders')->where('request_id', $requestId)->update([
+                'status' => 'completed',
+                'completed_by' => (int) $actor['employee_id'],
+                'completed_at' => $now,
+            ]);
+        }
         $db->table('distribution_actions')->insert(['request_id' => $requestId, 'assignment_id' => null, 'action' => 'completed', 'actor_id' => (int) $actor['employee_id'], 'actor_name' => (string) $actor['name'], 'actor_role' => (string) $actor['role'], 'department' => (string) $actor['department'], 'file_count' => $count, 'created_at' => $now]);
         $db->transComplete();
         service('audit')->record($actor, $this->request, 'distribution', 'REQUEST_COMPLETED', 'media_request', $requestId, 'Completed receipt of ' . $count . ' assigned media file(s).');
@@ -99,6 +116,12 @@ class DistributionController extends BaseController
             return redirect()->to(site_url('workspace/distribution'))->with('error', 'Only Creative Staff can distribute media.');
         }
         $ids = array_values(array_filter(array_map('intval', (array) $this->request->getPost('file_ids'))));
+        $folderIds = array_values(array_filter(array_map('intval', (array) $this->request->getPost('folder_ids'))));
+        $selectedFolderNames = $this->folderNames($folderIds);
+        if ($folderIds !== []) {
+            $folderIds = $this->expandedFolderIds($folderIds);
+            $ids = array_values(array_unique(array_merge($ids, $this->fileIdsFromFolders($folderIds))));
+        }
         $department = trim(mb_substr((string) $this->request->getPost('department'), 0, 150));
         if ($requestId !== null) {
             $request = db_connect()->table('media_requests')->where('id', $requestId)->where('status', 'submitted')->get()->getRowArray();
@@ -108,14 +131,125 @@ class DistributionController extends BaseController
             $department = (string) $request['department'];
         }
         try {
-            $count = service('distribution')->assign($ids, $department, $requestId, $method, $actor);
-            if ($count < 1) {
-                throw new RuntimeException('No new media assignments were created.');
+            $fileNames = $this->mediaNames($ids);
+            $delivery = service('distribution')->assign($ids, $folderIds, $department, $requestId, $method, $actor);
+            $fileCount = (int) $delivery['file_count'];
+            $folderCount = (int) $delivery['folder_count'];
+            if ($fileCount + $folderCount < 1) {
+                throw new RuntimeException('No new file or folder assignments were created.');
             }
-            service('audit')->record($actor, $this->request, 'distribution', $method === 'direct' ? 'DIRECT_SENT' : 'TRANSMITTED', $requestId === null ? 'assignment' : 'media_request', $requestId, ($method === 'direct' ? 'Direct sent ' : 'Transmitted ') . $count . ' media file(s) to ' . $department . '.');
-            return redirect()->to(site_url('workspace/distribution?tab=' . ($method === 'direct' ? 'direct' : 'requests')))->with('success', $count . ' media file(s) sent to ' . $department . '.');
+            $action = $method === 'direct' ? 'DIRECT_SENT' : 'TRANSMITTED';
+            $verb = $method === 'direct' ? 'Direct sent' : 'Transmitted';
+            $files = $fileNames === [] ? $fileCount . ' media file(s)' : implode(', ', array_slice($fileNames, 0, 8)) . (count($fileNames) > 8 ? ', and more' : '');
+            $folders = $selectedFolderNames === [] ? '' : ' Folders: ' . implode(', ', $selectedFolderNames) . '.';
+            $summary = $folderCount . ' folder' . ($folderCount === 1 ? '' : 's') . ' and ' . $fileCount . ' media file' . ($fileCount === 1 ? '' : 's');
+            service('audit')->record($actor, $this->request, 'distribution', $action, $requestId === null ? 'assignment' : 'media_request', $requestId, $verb . ' ' . $summary . ' to ' . $department . ' by ' . (string) ($actor['name'] ?? 'Unknown user') . '. Files: ' . $files . '.' . $folders);
+            return redirect()->to(site_url('workspace/distribution?tab=' . ($method === 'direct' ? 'direct' : 'requests')))->with('success', ucfirst($verb) . ' ' . $summary . ' to ' . $department . '.');
         } catch (RuntimeException $exception) {
             return redirect()->to(site_url('workspace/distribution'))->with('error', $exception->getMessage());
         }
+    }
+
+    /** @param list<int> $ids @return list<string> */
+    private function mediaNames(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $names = [];
+        foreach ((new FileModel())->whereIn('id', $ids)->findAll() as $file) {
+            $names[] = MediaTitle::forFile($file);
+        }
+
+        return $names;
+    }
+
+    /** @param list<int> $folderIds @return list<string> */
+    private function folderNames(array $folderIds): array
+    {
+        $folderIds = array_values(array_unique(array_filter(array_map('intval', $folderIds), static fn (int $id): bool => $id > 0)));
+        if ($folderIds === []) {
+            return [];
+        }
+
+        return array_values(array_map(static fn (array $folder): string => (string) $folder['name'], (new FolderModel())->whereIn('id', $folderIds)->findAll()));
+    }
+
+    /** @param list<int> $requestIds @return array<int, list<array<string, mixed>>> */
+    private function requestFiles(array $requestIds): array
+    {
+        $requestIds = array_values(array_unique(array_filter($requestIds, static fn (int $id): bool => $id > 0)));
+        if ($requestIds === []) {
+            return [];
+        }
+
+        $rows = db_connect()->table('media_assignments ma')
+            ->select('ma.request_id, f.id, f.display_title, f.filename, f.filetype, f.mime_type, f.folder_id, fo.name AS folder_name')
+            ->join('files f', 'f.id = ma.media_id', 'inner')
+            ->join('folder fo', 'fo.id = f.folder_id', 'left')
+            ->whereIn('ma.request_id', $requestIds)
+            ->orderBy('fo.name', 'ASC')
+            ->orderBy('f.display_title', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        $files = [];
+        foreach ($rows as $row) {
+            $row['media_title'] = MediaTitle::forFile($row);
+            $files[(int) $row['request_id']][] = $row;
+        }
+
+        return $files;
+    }
+
+    /** @param list<int> $folderIds @return list<int> */
+    private function fileIdsFromFolders(array $folderIds): array
+    {
+        $folderIds = $this->expandedFolderIds($folderIds);
+        if ($folderIds === []) {
+            return [];
+        }
+
+        $rows = (new FileModel())
+            ->select('id')
+            ->where('is_deleted', 0)
+            ->where('storage_stage', 'processed')
+            ->whereIn('folder_id', $folderIds)
+            ->findAll();
+
+        return array_values(array_map(static fn (array $file): int => (int) $file['id'], $rows));
+    }
+
+    /** @param list<int> $folderIds @return list<int> */
+    private function expandedFolderIds(array $folderIds): array
+    {
+        $folderIds = array_values(array_unique(array_filter(array_map('intval', $folderIds), static fn (int $id): bool => $id > 0)));
+        if ($folderIds === []) {
+            return [];
+        }
+
+        $allFolders = (new FolderModel())->findAll();
+        $children = [];
+        foreach ($allFolders as $folder) {
+            $parent = empty($folder['parent_id']) ? 0 : (int) $folder['parent_id'];
+            $children[$parent][] = (int) $folder['id'];
+        }
+
+        $expanded = [];
+        $stack = $folderIds;
+        while ($stack !== []) {
+            $id = (int) array_pop($stack);
+            if (isset($expanded[$id])) {
+                continue;
+            }
+            $expanded[$id] = true;
+            foreach ($children[$id] ?? [] as $childId) {
+                $stack[] = $childId;
+            }
+        }
+
+        return array_values(array_map('intval', array_keys($expanded)));
     }
 }

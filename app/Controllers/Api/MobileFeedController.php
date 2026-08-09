@@ -138,11 +138,7 @@ class MobileFeedController extends ApiController
             return $this->error('unsupported_media', 'This file is not a supported video.', 415);
         }
 
-        return $this->response
-            ->download($path, null, true)
-            ->setFileName($this->previewName($file))
-            ->setContentType($mimeType, '')
-            ->inline();
+        return $this->streamVideoResponse($path, $mimeType);
     }
 
     public function download(int $id)
@@ -181,16 +177,65 @@ class MobileFeedController extends ApiController
             'classification' => $file['classification'] ?? null,
             'like_count'     => db_connect()->table('mobile_media_likes')->where('file_id', (int) $file['id'])->countAllResults(),
             'comment_count'  => db_connect()->table('mobile_comments')->where('file_id', (int) $file['id'])->countAllResults(),
-            'file_url'      => site_url($mediaPath),
-            'stream_url'    => $kind === 'video' ? site_url($mediaPath) : null,
-            'download_url'  => (bool) $file['downloadable'] ? site_url('api/v1/mobile/media/' . $file['id'] . '/download') : null,
-            'thumbnail_url' => $kind === 'image' ? site_url($mediaPath) : null,
+            'file_url'      => $this->externalUrl($mediaPath),
+            'stream_url'    => $kind === 'video' ? $this->externalUrl($mediaPath) : null,
+            'download_url'  => (bool) $file['downloadable'] ? $this->externalUrl('api/v1/mobile/media/' . $file['id'] . '/download') : null,
+            'thumbnail_url' => $kind === 'image' ? $this->externalUrl($mediaPath) : null,
         ];
     }
 
     private function channelKey(string $channel): string
     {
         return trim(strtolower(preg_replace('/[^a-z0-9]+/i', '-', $channel) ?? ''), '-');
+    }
+
+    private function streamVideoResponse(string $path, string $mimeType)
+    {
+        $size = filesize($path);
+        if ($size === false || $size < 1) {
+            return $this->error('file_unavailable', 'The video file is unavailable.', 404);
+        }
+
+        $start = 0;
+        $end = $size - 1;
+        $status = 200;
+        $range = $this->request->getHeaderLine('Range');
+        if (preg_match('/bytes=(\d*)-(\d*)/i', $range, $matches) === 1) {
+            if ($matches[1] === '' && $matches[2] !== '') {
+                $start = $size - min((int) $matches[2], $size);
+            } elseif ($matches[1] !== '') {
+                $start = (int) $matches[1];
+                $end = $matches[2] === '' ? $end : min((int) $matches[2], $end);
+            }
+            if ($start > $end || $start >= $size) {
+                return $this->response
+                    ->setStatusCode(416)
+                    ->setHeader('Content-Range', 'bytes */' . $size)
+                    ->setBody('Requested video range is unavailable.');
+            }
+            $status = 206;
+        }
+
+        $length = $end - $start + 1;
+        $body = '';
+        if (strtoupper($this->request->getMethod()) !== 'HEAD') {
+            $body = file_get_contents($path, false, null, $start, $length);
+            if ($body === false) {
+                return $this->error('file_unavailable', 'The video file is unavailable.', 404);
+            }
+        }
+
+        $response = $this->response
+            ->setStatusCode($status)
+            ->setHeader('Accept-Ranges', 'bytes')
+            ->setHeader('Content-Type', $mimeType)
+            ->setHeader('Content-Length', (string) $length)
+            ->setBody($body)
+            ->noCache();
+
+        return $status === 206
+            ? $response->setHeader('Content-Range', 'bytes ' . $start . '-' . $end . '/' . $size)
+            : $response;
     }
 
     /** @param array<string, mixed> $file */
