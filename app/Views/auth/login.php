@@ -65,7 +65,7 @@
                     <div class="mb-4"><label class="login-label" for="yourPassword">Password</label><div class="field-wrap"><i class="bi bi-lock field-icon"></i><input type="password" name="password" class="form-control login-field" id="yourPassword" placeholder="Enter your password" autocomplete="current-password" required><button class="password-toggle" type="button" id="passwordToggle" aria-label="Show password" aria-pressed="false"><i class="bi bi-eye"></i></button></div></div>
                     <button class="btn btn-primary login-submit" type="submit">Sign in <i class="bi bi-arrow-right ms-1"></i></button>
                 </form>
-                <p class="security-note"><i class="bi bi-shield-check"></i> Secure access for authorised Creative Department staff.</p>
+                <p class="security-note"><i class="bi bi-shield-check"></i> Secure access for authorized Creative Department staff.</p>
             </div>
         </section>
     </section>

@@ -12,23 +12,53 @@ class MobileInteractionController extends ApiController
         if (! $this->published($id)) return $this->error('not_found', 'Media not found.', 404);
         $userId = (int) $this->actor()['employee_id'];
         $db = db_connect();
+        $reactionRow = $db->table('mobile_media_likes')->select('reaction')->where(['file_id' => $id, 'user_employee_id' => $userId])->get()->getRowArray();
+        $reaction = $reactionRow['reaction'] ?? null;
         return $this->success([
-            'liked' => $db->table('mobile_media_likes')->where(['file_id' => $id, 'user_employee_id' => $userId])->countAllResults() > 0,
-            'like_count' => $db->table('mobile_media_likes')->where('file_id', $id)->countAllResults(),
+            'reaction' => $reaction,
+            'liked' => $reaction === 'like',
+            'disliked' => $reaction === 'dislike',
+            'like_count' => $db->table('mobile_media_likes')->where(['file_id' => $id, 'reaction' => 'like'])->countAllResults(),
+            'dislike_count' => $db->table('mobile_media_likes')->where(['file_id' => $id, 'reaction' => 'dislike'])->countAllResults(),
             'comment_count' => $db->table('mobile_comments')->where('file_id', $id)->countAllResults(),
         ]);
     }
 
     public function like(int $id)
     {
+        return $this->toggleReaction($id, 'like');
+    }
+
+    public function dislike(int $id)
+    {
+        return $this->toggleReaction($id, 'dislike');
+    }
+
+    private function toggleReaction(int $id, string $reaction)
+    {
         if (! $this->published($id)) return $this->error('not_found', 'Media not found.', 404);
         $userId = (int) $this->actor()['employee_id'];
         $table = db_connect()->table('mobile_media_likes');
         $where = ['file_id' => $id, 'user_employee_id' => $userId];
         $existing = $table->where($where)->get()->getRowArray();
-        if ($existing) $table->where('id', $existing['id'])->delete();
-        else $table->ignore(true)->insert($where + ['created_at' => Time::now('UTC')->toDateTimeString()]);
-        return $this->success(['liked' => ! $existing, 'like_count' => db_connect()->table('mobile_media_likes')->where('file_id', $id)->countAllResults()]);
+        if ($existing && $existing['reaction'] === $reaction) {
+            $table->where('id', $existing['id'])->delete();
+            $currentReaction = null;
+        } elseif ($existing) {
+            $table->where('id', $existing['id'])->update(['reaction' => $reaction]);
+            $currentReaction = $reaction;
+        } else {
+            $table->insert($where + ['reaction' => $reaction, 'created_at' => Time::now('UTC')->toDateTimeString()]);
+            $currentReaction = $reaction;
+        }
+
+        return $this->success([
+            'reaction' => $currentReaction,
+            'liked' => $currentReaction === 'like',
+            'disliked' => $currentReaction === 'dislike',
+            'like_count' => db_connect()->table('mobile_media_likes')->where(['file_id' => $id, 'reaction' => 'like'])->countAllResults(),
+            'dislike_count' => db_connect()->table('mobile_media_likes')->where(['file_id' => $id, 'reaction' => 'dislike'])->countAllResults(),
+        ]);
     }
 
     public function comments(int $id)

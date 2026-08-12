@@ -315,7 +315,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                 <input type="hidden" name="post_type" id="postMediaType" value="">
                 <input type="hidden" name="folder_id" id="postMediaFolderId" value="">
                 <div id="postMediaFileIds"></div>
-                <div class="mb-3"><label class="form-label" for="postDisplayTitle">Display Title</label><input class="form-control" id="postDisplayTitle" name="display_title" maxlength="150" required></div>
+                <div class="mb-3"><label class="form-label" for="postDisplayTitle">Display Title</label><input class="form-control" id="postDisplayTitle" name="display_title" maxlength="150" required><div class="form-text">Applied to every selected file.</div></div>
                 <div class="mb-3"><label class="form-label" for="postChannel">Channel</label><select class="form-select" id="postChannel" name="channel" required><option value="">Choose destination</option><option value="General Events">General Events</option><option value="CCS">CCS</option><option value="CBA">CBA</option><option value="CN">CN</option><option value="CHM">CHM</option></select></div>
                 <div><label class="form-label" for="postDescription">Description</label><input class="form-control" id="postDescription" name="description" maxlength="5000" placeholder="Optional"></div>
                 </div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Upload</button></div></form></div></div>

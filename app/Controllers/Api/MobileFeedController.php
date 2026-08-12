@@ -175,7 +175,7 @@ class MobileFeedController extends ApiController
             'channel_id'    => $this->channelKey((string) ($file['publication_channel'] ?? '')),
             'tags'           => $file['tags'] ?? null,
             'classification' => $file['classification'] ?? null,
-            'like_count'     => db_connect()->table('mobile_media_likes')->where('file_id', (int) $file['id'])->countAllResults(),
+            'like_count'     => db_connect()->table('mobile_media_likes')->where(['file_id' => (int) $file['id'], 'reaction' => 'like'])->countAllResults(),
             'comment_count'  => db_connect()->table('mobile_comments')->where('file_id', (int) $file['id'])->countAllResults(),
             'file_url'      => $this->externalUrl($mediaPath),
             'stream_url'    => $kind === 'video' ? $this->externalUrl($mediaPath) : null,

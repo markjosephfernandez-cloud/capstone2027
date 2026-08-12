@@ -1807,13 +1807,13 @@ class WorkspaceController extends BaseController
             foreach ($fileIds as $fileId) {
                 $file = $fileModel->find((int) $fileId);
                 if ($file) {
-                    $publishedTitle = count($fileIds) === 1 ? $displayTitle : \App\Libraries\MediaTitle::forFile($file);
+                    $publishedTitle = $displayTitle;
                     $fileModel->update((int) $fileId, [
                         'publication_channel' => $channel,
                         'published_at' => $publishedAt,
                         'published_by' => $employeeId,
                         'description' => $description !== '' ? $description : $file['description'],
-                        'display_title' => count($fileIds) === 1 ? $displayTitle : $file['display_title'],
+                        'display_title' => $displayTitle,
                         'release_status' => 'published',
                     ]);
                     service('audit')->record($actor, $this->request, 'publish', 'FILE_PUBLISHED', 'file', (int) $fileId, 'Published file "' . $publishedTitle . '" to Mobile App. Channel: ' . $channel . '.');

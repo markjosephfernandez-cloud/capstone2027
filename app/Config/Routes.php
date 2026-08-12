@@ -94,6 +94,7 @@ $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api', 'filter' => 'a
         $routes->post('auth/logout', 'AuthController::logout');
         $routes->get('mobile/media/(:num)/engagement', 'MobileInteractionController::engagement/$1');
         $routes->post('mobile/media/(:num)/like', 'MobileInteractionController::like/$1');
+        $routes->post('mobile/media/(:num)/dislike', 'MobileInteractionController::dislike/$1');
         $routes->post('mobile/media/(:num)/comments', 'MobileInteractionController::addComment/$1');
         $routes->get('mobile/channels/(:segment)/subscription', 'MobileInteractionController::subscription/$1');
         $routes->post('mobile/channels/(:segment)/subscription', 'MobileInteractionController::subscription/$1');
@@ -103,6 +104,12 @@ $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api', 'filter' => 'a
         $routes->get('mobile/profile', 'MobileProfileController::show');
         $routes->patch('mobile/profile', 'MobileProfileController::update');
         $routes->post('mobile/profile/avatar', 'MobileProfileController::uploadAvatar');
+        $routes->post('mobile/history/watch', 'MobileHistoryController::watch');
+        $routes->get('mobile/history/watch', 'MobileHistoryController::watchList');
+        $routes->delete('mobile/history/watch', 'MobileHistoryController::clearWatch');
+        $routes->post('mobile/history/download', 'MobileHistoryController::download');
+        $routes->get('mobile/history/download', 'MobileHistoryController::downloadList');
+        $routes->delete('mobile/history/download', 'MobileHistoryController::clearDownload');
         $routes->get('files', 'FileController::index');
         $routes->post('files', 'FileController::upload');
         $routes->get('files/(:num)', 'FileController::show/$1');
