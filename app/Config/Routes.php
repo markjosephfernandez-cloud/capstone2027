@@ -22,8 +22,12 @@ $routes->post('workspace/file-management/folders', 'Web\\WorkspaceController::cr
 $routes->post('workspace/file-management/folders/(:num)/rename', 'Web\\WorkspaceController::renameFolder/$1', ['filter' => 'csrf']);
 $routes->post('workspace/file-management/folders/(:num)/delete', 'Web\\WorkspaceController::deleteFolder/$1', ['filter' => 'csrf']);
 $routes->post('workspace/file-management/upload', 'Web\\WorkspaceController::upload', ['filter' => 'csrf']);
+$routes->post('workspace/file-management/watermark-auto', 'Web\\WorkspaceController::updateAutomaticWatermark', ['filter' => 'csrf']);
 $routes->post('workspace/file-management/tags', 'Web\\WorkspaceController::addTags', ['filter' => 'csrf']);
 $routes->get('workspace/file-management/duplicates', 'Web\\WorkspaceController::duplicateQueue');
+$routes->post('workspace/file-management/duplicates/restore', 'Web\\WorkspaceController::restoreDuplicates', ['filter' => 'csrf']);
+$routes->get('workspace/file-management/duplicates/(:num)/preview', 'Web\\WorkspaceController::duplicatePreview/$1');
+$routes->get('workspace/file-management/duplicates/(:num)/download', 'Web\\WorkspaceController::duplicateDownload/$1');
 $routes->post('workspace/file-management/bulk-download', 'Web\\WorkspaceController::bulkDownload', ['filter' => 'csrf']);
 $routes->post('workspace/file-management/bulk-trash', 'Web\\WorkspaceController::bulkTrash', ['filter' => 'csrf']);
 $routes->post('workspace/file-management/post', 'Web\\WorkspaceController::postMedia', ['filter' => 'csrf']);
@@ -39,6 +43,7 @@ $routes->get('workspace/ifound', 'Web\\WorkspaceController::ifound');
 $routes->post('workspace/ifound/(:num)/review', 'Web\\WorkspaceController::reviewEvent/$1', ['filter' => 'csrf']);
 $routes->get('workspace/downloads', 'Web\\WorkspaceController::downloads');
 $routes->get('workspace/trash', 'Web\\WorkspaceController::trash');
+$routes->get('workspace/trash/folders/(:num)', 'Web\\WorkspaceController::trashFolder/$1');
 $routes->get('workspace/trash/(:num)/preview', 'Web\\WorkspaceController::trashPreview/$1');
 $routes->post('workspace/trash/(:num)/restore', 'Web\\WorkspaceController::restoreFromTrash/$1', ['filter' => 'csrf']);
 $routes->post('workspace/trash/(:num)/delete', 'Web\\WorkspaceController::permanentlyDeleteFromTrash/$1', ['filter' => 'csrf']);
@@ -58,6 +63,7 @@ $routes->post('workspace/distribution/requests/(:num)/transmit', 'Web\\Distribut
 $routes->post('workspace/distribution/requests/(:num)/complete', 'Web\\DistributionController::complete/$1', ['filter' => 'csrf']);
 $routes->post('workspace/distribution/direct-send', 'Web\\DistributionController::directSend', ['filter' => 'csrf']);
 $routes->get('workspace/notifications', 'Web\\NotificationController::index');
+$routes->post('notifications/read-all', 'Web\\NotificationController::readAll', ['filter' => 'csrf']);
 $routes->post('notifications/(:num)/read', 'Web\\NotificationController::read/$1', ['filter' => 'csrf']);
 $routes->get('workspace/audit-logs', 'Web\\AddonsController::auditLogs');
 $routes->get('workspace/(:segment)', 'Web\\FeatureController::show/$1');

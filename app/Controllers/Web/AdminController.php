@@ -38,7 +38,13 @@ class AdminController extends BaseController
         $activeFiles = (int) $db->table('files')->where('is_deleted', 0)->countAllResults();
         $trashCount = (int) $db->table('files')->where('is_deleted', 1)->countAllResults();
         $storageBytes = (int) ($db->table('files')->where('is_deleted', 0)->selectSum('size')->get()->getRowArray()['size'] ?? 0);
-        $passportAiFlags = $db->tableExists('passports') ? (int) $db->table('passports')->where('needs_review', 1)->countAllResults() : 0;
+        $passportAiFlags = $db->tableExists('passports')
+            ? (int) $db->table('passports p')
+                ->join('files f', 'f.id = p.media_id')
+                ->where('f.is_deleted', 0)
+                ->where('p.needs_review', 1)
+                ->countAllResults()
+            : 0;
         $activeTokens = $db->tableExists('api_tokens') ? (int) $db->table('api_tokens')->where('revoked_at', null)->groupStart()->where('expires_at', null)->orWhere('expires_at >', gmdate('Y-m-d H:i:s'))->groupEnd()->countAllResults() : 0;
         $legacyPasswords = (int) $db->table('user')->groupStart()->where('password_hash', null)->orWhere('password_hash', '')->groupEnd()->countAllResults();
         $consentMissing = $db->tableExists('privacy_consents')

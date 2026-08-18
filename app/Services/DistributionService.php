@@ -52,7 +52,7 @@ class DistributionService
         $fileCount = 0;
         $folderCount = 0;
         foreach ($folderIds as $folderId) {
-            if ($db->table('folder')->where('id', $folderId)->countAllResults() === 0) {
+            if ($db->table('folder')->where('id', $folderId)->where('is_deleted', 0)->countAllResults() === 0) {
                 continue;
             }
 

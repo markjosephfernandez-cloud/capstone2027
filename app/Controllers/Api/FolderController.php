@@ -21,9 +21,19 @@ class FolderController extends ApiController
         }
 
         $metadata = [];
+        $deletedPaths = [];
         foreach ((new FolderModel())->findAll() as $folder) {
             if (! empty($folder['path'])) {
-                $metadata[(string) $folder['path']] = $folder;
+                if ((int) ($folder['is_deleted'] ?? 0) === 1) {
+                    $deletedPaths[(string) $folder['path']] = true;
+                } else {
+                    $metadata[(string) $folder['path']] = $folder;
+                }
+            }
+        }
+        foreach (array_keys($deletedPaths) as $deletedPath) {
+            if ($relative === $deletedPath || str_starts_with($relative, $deletedPath . '/')) {
+                return $this->error('not_found', 'The requested folder is in Trash.', 404);
             }
         }
 
@@ -33,6 +43,9 @@ class FolderController extends ApiController
                 continue;
             }
             $childPath = ltrim(($relative === '' ? '' : $relative . '/') . $item->getFilename(), '/');
+            if (isset($deletedPaths[$childPath])) {
+                continue;
+            }
             $folder    = $metadata[$childPath] ?? null;
             $items[]   = [
                 'id'          => $folder === null ? null : (int) $folder['id'],
@@ -71,6 +84,9 @@ class FolderController extends ApiController
                 return $this->error('validation_error', 'name must be a single folder name.', 422);
             }
             $path       = service('storage')->normalizeRelativePath(($parentPath === '' ? '' : $parentPath . '/') . $name, false);
+            if ($parentPath !== '' && (new FolderModel())->where('path', $parentPath)->where('is_deleted', 1)->first() !== null) {
+                return $this->error('invalid_path', 'The parent folder is in Trash.', 422);
+            }
             $parentDir  = service('storage')->directory($parentPath);
         } catch (RuntimeException $exception) {
             return $this->error('invalid_path', $exception->getMessage(), 422);

@@ -87,6 +87,7 @@ class PassportService
         $existing = $db->table('passports')->where('media_id', $mediaId)->get()->getRowArray();
         $passportUid = $existing['passport_uid'] ?? sprintf('FU-PSP-%s-%06d', gmdate('Y'), $mediaId);
         $contentHash = $this->contentHash((string) ($file['filepath'] ?? ''));
+        $dateTaken = $this->extractDateTaken((string) ($file['filepath'] ?? ''));
         $payload = [
             'passport_uid'        => $passportUid,
             'media_id'            => $mediaId,
@@ -94,6 +95,7 @@ class PassportService
             'department'          => $actor['department'] ?? null,
             'photographer'        => $actor['name'] ?? null,
             'uploaded_by'         => (string) ($actor['employee_id'] ?? ''),
+            'date_taken'          => $dateTaken,
             'upload_date'         => $file['dateupload'] ?? gmdate('Y-m-d H:i:s'),
             'ai_classification'   => $detection['classification'] ?? null,
             'confidence_score'    => $detection['confidence_score'] ?? null,
@@ -113,6 +115,7 @@ class PassportService
             'content_hash' => $contentHash,
             'event_name'   => $payload['event_name'],
             'uploaded_by'  => $payload['uploaded_by'],
+            'date_taken'   => $payload['date_taken'],
             'created_at'   => $payload['upload_date'],
         ], JSON_UNESCAPED_SLASHES));
         $payload['qr_payload'] = json_encode([
@@ -150,6 +153,56 @@ class PassportService
         }
 
         return ['id' => $passportId, 'passport_uid' => $passportUid, 'needs_review' => (bool) $payload['needs_review']];
+    }
+
+    private function extractDateTaken(string $filepath): ?string
+    {
+        if (! function_exists('exif_read_data')) {
+            return null;
+        }
+
+        try {
+            $path = service('storage')->resolveDatabaseFile($filepath);
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        $exif = @exif_read_data($path, null, true, false);
+        return is_array($exif) ? $this->dateTakenFromExif($exif) : null;
+    }
+
+    /** @param array<string, mixed> $exif */
+    private function dateTakenFromExif(array $exif): ?string
+    {
+        $values = [
+            $exif['EXIF']['DateTimeOriginal'] ?? null,
+            $exif['EXIF']['DateTimeDigitized'] ?? null,
+            $exif['IFD0']['DateTime'] ?? null,
+            $exif['DateTimeOriginal'] ?? null,
+            $exif['DateTimeDigitized'] ?? null,
+            $exif['DateTime'] ?? null,
+        ];
+
+        foreach ($values as $value) {
+            $value = trim((string) $value);
+            if (preg_match('/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/', $value, $parts) !== 1) {
+                continue;
+            }
+
+            $year = (int) $parts[1];
+            $month = (int) $parts[2];
+            $day = (int) $parts[3];
+            $hour = (int) $parts[4];
+            $minute = (int) $parts[5];
+            $second = (int) $parts[6];
+            if ($year < 1900 || ! checkdate($month, $day, $year) || $hour > 23 || $minute > 59 || $second > 59) {
+                continue;
+            }
+
+            return sprintf('%04d-%02d-%02d %02d:%02d:%02d', $year, $month, $day, $hour, $minute, $second);
+        }
+
+        return null;
     }
 
     private function contentHash(string $filepath): ?string

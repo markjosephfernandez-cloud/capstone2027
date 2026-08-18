@@ -48,7 +48,7 @@ class StorageService
         }
 
         foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || ! preg_match('/^[\\pL\\pN][\\pL\\pN ._()\\-]{0,119}$/u', $segment)) {
+            if ($segment === '' || ! preg_match('/^[\\pL\\pN][\\pL\\pN ,._()\\-]{0,119}$/u', $segment)) {
                 throw new RuntimeException('The folder path contains an invalid name.');
             }
         }

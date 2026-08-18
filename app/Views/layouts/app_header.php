@@ -40,8 +40,18 @@
         <nav class="header-nav ms-auto" aria-label="Header actions">
             <ul class="d-flex align-items-center">
                 <li class="nav-item dropdown">
-                    <button class="nav-link nav-icon mb-0 border-0 bg-transparent position-relative" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications"><i class="bi bi-bell"></i><?php if ($unreadNotificationCount > 0): ?><span class="badge bg-primary badge-number"><?= min(99, $unreadNotificationCount) ?></span><?php endif; ?></button>
-                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow notifications" style="min-width:330px"><li class="dropdown-header"><?= $unreadNotificationCount ?> unread notification<?= $unreadNotificationCount === 1 ? '' : 's' ?></li><li><hr class="dropdown-divider"></li><?php foreach ($headerNotifications as $notification): ?><li class="notification-item px-3 py-2"><form action="<?= esc(site_url('notifications/' . (int) $notification['id'] . '/read')) ?>" method="post"><?= csrf_field() ?><button class="btn text-start p-0 w-100" type="submit"><strong class="d-block small"><?= esc($notification['title']) ?></strong><span class="small text-muted"><?= nl2br(esc($notification['message'])) ?></span><span class="d-block text-muted" style="font-size:.7rem"><?= esc(date('M j, g:i A', strtotime((string) $notification['created_at']))) ?></span></button></form></li><li><hr class="dropdown-divider"></li><?php endforeach; ?><?php if ($headerNotifications === []): ?><li class="px-3 py-3 small text-muted">No notifications yet.</li><?php endif; ?></ul>
+                    <button class="nav-link nav-icon mb-0 border-0 bg-transparent position-relative" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications"><i class="bi bi-bell"></i><?php if ($unreadNotificationCount > 0): ?><span class="badge bg-primary badge-number"><?= $unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount ?></span><?php endif; ?></button>
+                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow notifications">
+                        <li class="notification-menu-header">
+                            <div><strong>Notifications</strong><span><?= esc(number_format($unreadNotificationCount)) ?> unread</span></div>
+                            <?php if ($unreadNotificationCount > 0): ?><form action="<?= esc(site_url('notifications/read-all')) ?>" method="post"><?= csrf_field() ?><button class="notification-read-all" type="submit"><i class="bi bi-check2-all me-1"></i>Read all</button></form><?php endif; ?>
+                        </li>
+                        <li class="notification-scroll"><ul class="list-unstyled mb-0">
+                            <?php foreach ($headerNotifications as $notification): ?><li class="notification-item"><form action="<?= esc(site_url('notifications/' . (int) $notification['id'] . '/read')) ?>" method="post"><?= csrf_field() ?><button class="notification-button" type="submit"><strong><?= esc($notification['title']) ?></strong><span><?= nl2br(esc($notification['message'])) ?></span><time datetime="<?= esc((string) $notification['created_at']) ?>"><?= esc(date('M j, g:i A', strtotime((string) $notification['created_at']))) ?></time></button></form></li><?php endforeach; ?>
+                            <?php if ($headerNotifications === []): ?><li class="notification-empty"><i class="bi bi-bell-slash"></i><span>No notifications yet.</span></li><?php endif; ?>
+                        </ul></li>
+                        <li class="notification-menu-footer"><a href="<?= esc(site_url('workspace/notifications')) ?>">View all notifications <i class="bi bi-arrow-right ms-1"></i></a></li>
+                    </ul>
                 </li>
             </ul>
         </nav>

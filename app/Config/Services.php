@@ -99,6 +99,15 @@ class Services extends BaseService
         return new \App\Services\DistributionService();
     }
 
+    public static function imageSimilarity(bool $getShared = true): \App\Services\ImageSimilarityService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('imageSimilarity');
+        }
+
+        return new \App\Services\ImageSimilarityService(db_connect());
+    }
+
     public static function consent(bool $getShared = true): \App\Services\ConsentService
     {
         if ($getShared) {

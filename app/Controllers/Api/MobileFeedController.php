@@ -66,7 +66,7 @@ class MobileFeedController extends ApiController
     {
         $query = trim((string) $this->request->getGet('q'));
         if ($query === '') return $this->success([], 200, ['suggestions' => []]);
-        $folderIds = array_map('intval', array_column((new FolderModel())->select('id')->like('name', $query)->findAll(), 'id'));
+        $folderIds = array_map('intval', array_column((new FolderModel())->where('is_deleted', 0)->select('id')->like('name', $query)->findAll(), 'id'));
         $builder = (new FileModel())->where(['is_deleted' => 0, 'release_status' => 'published'])
             ->groupStart()->like('display_title', $query)->orLike('tags', $query)
             ->orLike('classification', $query)->orLike('detected_objects', $query)->orLike('publication_channel', $query);

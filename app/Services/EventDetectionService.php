@@ -133,7 +133,7 @@ class EventDetectionService
 
         $folderId = filter_var($file['folder_id'] ?? null, FILTER_VALIDATE_INT);
         if ($folderId !== false && $folderId > 0) {
-            $folder = db_connect()->table('folder')->select('name')->where('id', $folderId)->get()->getRowArray();
+            $folder = db_connect()->table('folder')->select('name')->where('id', $folderId)->where('is_deleted', 0)->get()->getRowArray();
             $name = trim((string) ($folder['name'] ?? ''));
             if ($name !== '') {
                 $tags[] = 'Folder: ' . $name;

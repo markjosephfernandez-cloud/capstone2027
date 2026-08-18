@@ -44,6 +44,21 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
     .media-workspace .upload-picker.has-files .upload-picker-label { background: #eef8f2; border-color: #78bd91; }.media-workspace .upload-picker.has-files .upload-picker-icon { background: #dff2e6; color: #23834b; }
     .media-workspace .upload-progress { background: #eef4ff; border: 1px solid #d4e2ff; border-radius: 10px; color: #40516f; padding: .75rem .9rem; }
     .media-workspace .upload-progress .progress { height: 7px; }
+    .media-workspace .duplicate-mode-wrap { align-items: center; display: flex; flex-wrap: wrap; gap: .7rem 1rem; }
+    .media-workspace .duplicate-mode-switch { background: var(--media-primary); border: 2px solid var(--media-primary); border-radius: 999px; display: grid; flex: 0 1 455px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; }
+    .media-workspace .duplicate-mode-option { cursor: pointer; margin: 0; min-width: 0; position: relative; }
+    .media-workspace .duplicate-mode-option input { opacity: 0; pointer-events: none; position: absolute; }
+    .media-workspace .duplicate-mode-label { align-items: center; border-radius: 999px; color: #fff; display: flex; font-size: .8rem; font-weight: 750; gap: .4rem; justify-content: center; min-height: 38px; padding: .5rem .7rem; text-align: center; transition: background .18s ease, box-shadow .18s ease, color .18s ease; }
+    .media-workspace .duplicate-mode-option input:checked + .duplicate-mode-label { background: #fff; box-shadow: 0 3px 10px rgba(25, 57, 145, .22); color: var(--media-primary); }
+    .media-workspace .duplicate-mode-option input:focus-visible + .duplicate-mode-label { outline: 3px solid rgba(255, 255, 255, .65); outline-offset: -3px; }
+    .media-workspace .duplicate-mode-help { color: var(--media-muted); flex: 1 1 260px; font-size: .76rem; margin: 0; }
+    .media-workspace .watermark-auto-row { align-items: center; background: #f7f9ff; border: 1px solid #e1e7f5; border-radius: 10px; display: flex; gap: .7rem; margin-top: .65rem; max-width: 455px; padding: .55rem .75rem; }
+    .media-workspace .watermark-auto-row .form-check { margin: 0; min-height: 0; }
+    .media-workspace .watermark-auto-row .form-check-input { cursor: pointer; height: 1.25rem; margin-top: 0; width: 2.35rem; }
+    .media-workspace .watermark-auto-copy { color: #34405b; font-size: .78rem; line-height: 1.25; }
+    .media-workspace .watermark-auto-copy strong { display: block; font-size: .8rem; }
+    .media-workspace .watermark-auto-status { color: var(--media-muted); font-size: .7rem; }
+    @media (max-width: 575.98px) { .media-workspace .duplicate-mode-label { font-size: .73rem; min-height: 36px; padding: .45rem .35rem; } }
     .media-workspace .library-card { border: 1px solid var(--media-border); border-radius: 18px; box-shadow: none; overflow: hidden; }
     .media-workspace .browser-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: .85rem; }
     .media-workspace .browser-heading h3 { color: var(--media-ink); font-size: 1rem; font-weight: 700; margin: 0; }
@@ -56,6 +71,8 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
     .media-workspace .filter-bar .input-group .input-group-text, .media-workspace .filter-bar .input-group .form-control { background: transparent; border: 0; min-height: 46px; }
     .media-workspace .filter-bar .form-select { border-color: #dce3ee; border-radius: 22px; min-height: 46px; }
     .media-workspace .filter-bar .form-control:focus, .media-workspace .filter-bar .form-select:focus { box-shadow: 0 0 0 .2rem rgba(65, 84, 241, .12); }
+    .media-workspace .search-live-status { align-items: center; color: var(--media-muted); display: flex; font-size: .72rem; gap: .35rem; margin-top: .35rem; min-height: 1rem; padding-left: .8rem; }
+    .media-workspace .search-live-status.is-searching { color: var(--media-primary); }
     .media-workspace .media-view-switcher { background: #fff; border: 1px solid #d7deed; border-radius: 999px; display: inline-flex; overflow: hidden; padding: 2px; }
     .media-workspace .media-view-toggle { align-items: center; background: transparent; border: 0; border-radius: 999px; color: #53627c; display: inline-flex; font-size: 1.2rem; height: 40px; justify-content: center; transition: background .15s ease, color .15s ease; width: 50px; }
     .media-workspace .media-view-toggle:hover, .media-workspace .media-view-toggle:focus-visible { background: #eef2ff; color: var(--media-primary); outline: 0; }
@@ -67,12 +84,13 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
     .media-workspace .media-table tbody tr:hover { background: #fbfcff; }
     .media-workspace .file-icon { align-items: center; background: #eef3ff; border-radius: 10px; color: var(--media-primary); display: inline-flex; font-size: 1.1rem; height: 38px; justify-content: center; width: 38px; }
     .media-workspace .file-thumbnail { background: transparent; border: 0; border-radius: 10px; display: inline-flex; height: 44px; overflow: hidden; padding: 0; width: 44px; }
-    .media-workspace .file-thumbnail img { border: 1px solid #e0e7f5; border-radius: 10px; height: 44px; object-fit: cover; transition: transform .15s ease, box-shadow .15s ease; width: 44px; }
+    .media-workspace .file-thumbnail img { border: 1px solid #e0e7f5; border-radius: 10px; height: 44px; image-orientation: from-image; object-fit: cover; transition: transform .15s ease, box-shadow .15s ease; width: 44px; }
     .media-workspace .file-thumbnail:hover img, .media-workspace .file-thumbnail:focus-visible img { box-shadow: 0 4px 12px rgba(65, 84, 241, .25); transform: scale(1.06); }
     .media-workspace .image-preview-dialog { max-width: min(1100px, calc(100vw - 2rem)); }
     .media-workspace .image-preview-dialog .modal-content { max-height: calc(100vh - 2rem); overflow: hidden; }
     .media-workspace .image-preview-body { align-items: center; background: #101a31; display: flex; justify-content: center; min-height: 260px; max-height: calc(100vh - 190px); overflow: hidden; padding: 0; }
     .media-workspace .image-preview-body img, .media-workspace .image-preview-body video { display: block; height: auto; max-height: calc(100vh - 190px); max-width: 100%; object-fit: contain; width: auto; }
+    .media-workspace .image-preview-body img { image-orientation: from-image; }
     .media-workspace .media-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); padding: 1.25rem; }
     .media-workspace .folder-browser { background: #fbfcff; border-bottom: 1px solid #edf0f6; padding: 1.15rem 1.25rem; }
     .media-workspace .folder-browser-title { color: var(--media-ink); font-size: .9rem; font-weight: 700; margin: 0; }
@@ -122,7 +140,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
     .media-workspace .media-grid-card { background: #f0f4f9; border: 1px solid transparent; border-radius: 14px; box-shadow: none; display: flex; flex-direction: column; min-width: 0; overflow: visible; position: relative; transition: background .15s ease, box-shadow .15s ease; }
     .media-workspace .media-grid-card:hover { background: #eaf0f8; box-shadow: 0 3px 9px rgba(60, 64, 67, .12); }
     .media-workspace .grid-thumbnail, .media-workspace .grid-file-icon { align-items: center; background: #fff; border: 0; border-radius: 10px; color: var(--media-primary); display: flex; font-size: 2rem; height: 160px; justify-content: center; margin: .5rem; overflow: hidden; padding: 0; width: calc(100% - 1rem); }
-    .media-workspace .grid-thumbnail img { border: 0; border-radius: 10px; height: 100%; object-fit: cover; width: 100%; }
+    .media-workspace .grid-thumbnail img { border: 0; border-radius: 10px; height: 100%; image-orientation: from-image; object-fit: cover; width: 100%; }
     .media-workspace .grid-thumbnail video { border: 0; border-radius: 10px; height: 100%; object-fit: cover; pointer-events: none; width: 100%; }
     .media-workspace .video-thumbnail { position: relative; }
     .media-workspace .video-thumbnail::after { align-items: center; background: rgba(17,38,75,.8); border-radius: 50%; color: #fff; content: "\F4F4"; display: flex; font-family: bootstrap-icons; font-size: 1rem; height: 40px; justify-content: center; left: 50%; position: absolute; top: 50%; transform: translate(-50%,-50%); width: 40px; }
@@ -135,6 +153,9 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
     .media-workspace .grid-more { position: absolute; right: .72rem; top: .72rem; z-index: 4; }
     .media-workspace .file-name { color: #34405b; font-size: .9rem; font-weight: 700; }
     .media-workspace .file-description { color: #8791a7; font-size: .78rem; margin-top: .2rem; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-workspace .file-location-link { align-items: center; color: #526fae; display: inline-flex; font-size: .72rem; gap: .25rem; margin-top: .25rem; max-width: min(420px, 100%); text-decoration: none; }
+    .media-workspace .file-location-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-workspace .file-location-link:hover, .media-workspace .file-location-link:focus-visible { color: var(--media-primary); text-decoration: underline; }
     .media-workspace .file-type { background: #f0f3f9; border-radius: 999px; color: #59667e; display: inline-block; font-size: .73rem; font-weight: 700; padding: .35rem .6rem; text-transform: uppercase; }
     .media-workspace .tags-value { color: #69768d; font-size: .8rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .media-workspace .action-button { align-items: center; border-radius: 8px; display: inline-flex; gap: .35rem; justify-content: center; min-width: 36px; }
@@ -142,8 +163,31 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
     .media-workspace .empty-state-icon { align-items: center; background: #eef3ff; border-radius: 50%; color: var(--media-primary); display: inline-flex; font-size: 1.7rem; height: 66px; justify-content: center; width: 66px; }
     .media-workspace .empty-state h3 { color: var(--media-ink); font-size: 1.05rem; font-weight: 700; margin: 1rem 0 .35rem; }
     .media-workspace .empty-state p { color: var(--media-muted); margin: 0 auto 1.1rem; max-width: 390px; }
+    .duplicate-dialog { max-width: min(1320px, calc(100vw - 2rem)); }
+    .duplicate-dialog .modal-content { border: 0; max-height: calc(100vh - 2rem); overflow: hidden; }
+    .duplicate-modal-body { background: #fbfcff; overflow-y: auto; padding: 1.25rem; }
+    .duplicate-stats { display: grid; gap: .8rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .duplicate-stat { background: #fff; border: 1px solid #dfe5ef; border-radius: 10px; box-shadow: 0 2px 6px rgba(31,49,83,.04); padding: 1rem; }
+    .duplicate-stat strong { color: #17223b; display: block; font-size: 1.25rem; }
+    .duplicate-stat span { color: #68748b; font-size: .76rem; }
+    .duplicate-group { border-bottom: 1px solid #e4e9f2; padding: 1.2rem 0; }
+    .duplicate-group:last-child { border-bottom: 0; }
+    .duplicate-group-title { color: #17223b; font-size: .92rem; font-weight: 750; }
+    .duplicate-similarity { color: #68748b; font-size: .77rem; }
+    .duplicate-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); margin-top: .8rem; }
+    .duplicate-card { background: #fff; border: 1px solid #dfe5ef; border-radius: 10px; min-width: 0; overflow: hidden; position: relative; }
+    .duplicate-card-thumb { align-items: center; background: #eef2f8; color: #61708d; display: flex; height: 135px; justify-content: center; overflow: hidden; width: 100%; }
+    .duplicate-card-thumb img { height: 100%; image-orientation: from-image; object-fit: cover; transition: transform .15s; width: 100%; }
+    .duplicate-card-thumb:hover img { transform: scale(1.03); }
+    .duplicate-card-select { background: rgba(255,255,255,.94); border-radius: 6px; left: .55rem; padding: .2rem; position: absolute; top: .55rem; z-index: 2; }
+    .duplicate-card-menu { position: absolute; right: .5rem; top: .5rem; z-index: 3; }
+    .duplicate-card-body { padding: .7rem; }
+    .duplicate-card-name { color: #24334f; font-size: .82rem; font-weight: 750; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .duplicate-card-meta { color: #71809b; font-size: .72rem; margin-top: .28rem; }
+    .duplicate-details { background: #f5f8ff; border-radius: 8px; color: #53627c; font-size: .78rem; margin-top: .75rem; padding: .75rem; }
+    .duplicates-empty { color: #71809b; padding: 4rem 1rem; text-align: center; }
     @media (max-width: 991.98px) { .media-workspace .bulk-actions { justify-content: flex-start; width: 100%; } }
-    @media (max-width: 767.98px) { .media-workspace .library-hero { padding: 1.1rem; } .media-workspace .hero-symbol { height: 44px; width: 44px; } .media-workspace .filter-bar { padding: 1rem; } .media-workspace .media-table thead th, .media-workspace .media-table tbody td { padding-left: .9rem; padding-right: .9rem; } .media-workspace .media-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); padding: 1rem; } .media-workspace .grid-thumbnail, .media-workspace .grid-file-icon { height: 125px; } .media-workspace .publication-actions { align-items: stretch; width: 100%; } .media-workspace .publication-actions .btn, .media-workspace .bulk-channel-select { flex: 1 1 auto; } .media-workspace .folder-grid.is-list-view { --folder-list-columns: minmax(150px, 1fr) 88px 44px; } .media-workspace .folder-grid.is-list-view .folder-list-header { grid-template-columns: var(--folder-list-columns); } .media-workspace .folder-grid.is-list-view .folder-list-modified { display: none; } .media-workspace .folder-grid.is-list-view .folder-card-main { grid-column: 1 / 3; grid-template-columns: minmax(150px, 1fr) 88px; } .media-workspace .folder-grid.is-list-view .folder-card-menu { grid-column: 3; } }
+    @media (max-width: 767.98px) { .media-workspace .library-hero { padding: 1.1rem; } .media-workspace .hero-symbol { height: 44px; width: 44px; } .media-workspace .filter-bar { padding: 1rem; } .media-workspace .media-table thead th, .media-workspace .media-table tbody td { padding-left: .9rem; padding-right: .9rem; } .media-workspace .media-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); padding: 1rem; } .media-workspace .grid-thumbnail, .media-workspace .grid-file-icon { height: 125px; } .media-workspace .publication-actions { align-items: stretch; width: 100%; } .media-workspace .publication-actions .btn, .media-workspace .bulk-channel-select { flex: 1 1 auto; } .media-workspace .folder-grid.is-list-view { --folder-list-columns: minmax(150px, 1fr) 88px 44px; } .media-workspace .folder-grid.is-list-view .folder-list-header { grid-template-columns: var(--folder-list-columns); } .media-workspace .folder-grid.is-list-view .folder-list-modified { display: none; } .media-workspace .folder-grid.is-list-view .folder-card-main { grid-column: 1 / 3; grid-template-columns: minmax(150px, 1fr) 88px; } .media-workspace .folder-grid.is-list-view .folder-card-menu { grid-column: 3; } .duplicate-stats { grid-template-columns: 1fr; } }
 </style>
 
 <main id="main" class="main media-workspace">
@@ -195,7 +239,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                     <?php endif; ?>
                     <span class="media-count"><i class="bi bi-folder"></i><?= esc((string) count($folders)) ?> <?= count($folders) === 1 ? ($selectedFolder === null ? 'folder' : 'subfolder') : ($selectedFolder === null ? 'folders' : 'subfolders') ?></span>
                     <span class="media-count"><i class="bi bi-collection"></i><?= esc((string) $visibleFileCount) ?> visible <?= $visibleFileCount === 1 ? 'file' : 'files' ?></span>
-                    <?php if ($canManage): ?><a class="media-count text-decoration-none" href="<?= esc(site_url('workspace/file-management/duplicates')) ?>"><i class="bi bi-copy"></i>Duplicates (<?= (int) $duplicateCount ?>)</a><?php endif; ?>
+                    <?php if ($canManage): ?><button class="media-count" type="button" data-bs-toggle="modal" data-bs-target="#duplicatesModal"><i class="bi bi-copy"></i>Duplicates (<?= (int) $duplicateCount ?>)</button><?php endif; ?>
                 </div>
             </div>
         </div>
@@ -225,7 +269,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                     <div class="col-md-6 col-xl-3"><div class="upload-picker"><input type="file" id="folder_files" name="folder_files[]" webkitdirectory directory mozdirectory multiple><label class="upload-picker-label" for="folder_files"><span class="upload-picker-icon"><i class="bi bi-folder2-open"></i></span><span><span class="upload-picker-title">Browse a folder</span><span class="upload-picker-hint">Preserves supported subfolders</span></span></label><span class="upload-selection" id="folderSelection">Chrome or Edge recommended</span></div></div>
                     <div class="col-md-6 col-xl-3"><label class="form-label" for="folder_id">Upload to folder</label><select class="form-select" id="folder_id" name="folder_id"><option value="">Root library</option><?php foreach ($folderOptions as $folder): ?><option value="<?= (int) $folder['id'] ?>" <?= $folderId === (int) $folder['id'] ? 'selected' : '' ?>><?= esc($folder['display_name']) ?></option><?php endforeach; ?></select></div>
                     <div class="col-md-6 col-xl-3 d-grid"><button class="btn btn-primary h-100" id="uploadSubmit" type="submit" disabled><i class="bi bi-cloud-arrow-up me-1"></i>Start upload</button></div>
-                    <div class="col-12"><p class="mb-0 text-muted small"><i class="bi bi-droplet-half me-1"></i>Watermark processing runs automatically when enabled; the stored original is never changed.</p></div>
+                    <fieldset class="col-12"><legend class="form-label">Duplicate scan mode</legend><div class="duplicate-mode-wrap"><div class="duplicate-mode-switch" role="radiogroup" aria-label="Duplicate scan mode"><label class="duplicate-mode-option"><input type="radio" name="duplicate_mode" value="upload_batch"><span class="duplicate-mode-label"><i class="bi bi-collection"></i>Current upload</span></label><label class="duplicate-mode-option"><input type="radio" name="duplicate_mode" value="media_library" checked><span class="duplicate-mode-label"><i class="bi bi-images"></i>Media Library</span></label></div><p class="duplicate-mode-help" id="duplicateModeHelp">Checks selected files against media stored before this upload.</p></div><input type="hidden" name="upload_batch_id" id="uploadBatchId" value=""><?php if (! empty($canToggleWatermark)): ?><div class="watermark-auto-row"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="automaticWatermarkToggle" <?= ! empty($watermarkEnabled) ? 'checked' : '' ?> data-url="<?= esc(site_url('workspace/file-management/watermark-auto')) ?>" aria-describedby="automaticWatermarkStatus"></div><label class="watermark-auto-copy" for="automaticWatermarkToggle"><strong>Apply watermark automatically</strong><span class="watermark-auto-status" id="automaticWatermarkStatus"><?= ! empty($watermarkEnabled) ? 'Enabled for new Creative Department image uploads.' : 'Disabled for new Creative Department image uploads.' ?></span></label></div><?php else: ?><p class="mt-2 mb-0 text-muted small"><i class="bi bi-droplet-half me-1"></i>Watermark processing runs automatically when enabled; the stored original is never changed.</p><?php endif; ?></fieldset>
                     <div class="col-12 d-none" id="uploadProgress" role="status" aria-live="polite"><div class="upload-progress"><div class="d-flex justify-content-between gap-3 mb-2"><span id="uploadProgressLabel">Preparing uploads&hellip;</span><span id="uploadProgressCount"></span></div><div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" id="uploadProgressBar" style="width: 0%"></div></div></div></div>
                     <div class="col-12"><p class="mb-0 text-muted small"><i class="bi bi-shield-check me-1"></i>No application file-count limit: selected media is uploaded one at a time. Maximum size: 100 MB per file &middot; Each upload receives event analysis and a metadata passport.</p></div>
                 </form>
@@ -233,17 +277,19 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
         </div><?php endif; ?>
 
         <div class="card library-card">
-            <form class="filter-bar" method="get">
+            <form class="filter-bar" id="mediaFilterForm" method="get" role="search" data-ajax-live-search data-ajax-live-delay="400">
                 <?php if ($folderId !== null): ?><input type="hidden" name="folder" value="<?= (int) $folderId ?>"><?php endif; ?>
                 <?php if ($stage !== ''): ?><input type="hidden" name="stage" value="<?= esc($stage) ?>"><?php endif; ?>
+                <?php if ($distribution !== ''): ?><input type="hidden" name="distribution" value="<?= esc($distribution) ?>"><?php endif; ?>
                 <div class="browser-heading">
-                    <div><h3><?= $query !== '' ? 'Matching Media' : 'Browse media' ?></h3><p>Search display titles, folder names, AI-generated tags, and manual tags.</p></div>
+                    <div><h3><?= $query !== '' ? 'Matching Media' : 'Browse media' ?></h3><p>Search filenames, folder names, original dates taken, event names, and tags.</p></div>
                     <?php if ($query !== '' || $type !== ''): ?><a class="btn btn-sm btn-link text-decoration-none" href="<?= esc(site_url('workspace/file-management')) ?>"><i class="bi bi-x-circle me-1"></i>Clear filters</a><?php endif; ?>
                 </div>
                 <div class="row g-2 align-items-center">
                     <div class="col-lg-5">
-                        <label class="visually-hidden" for="mediaSearch">Search media by display title, folder, or tag</label>
-                        <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" id="mediaSearch" name="q" placeholder="Search all folders and tags" value="<?= esc($query) ?>" autocomplete="off"></div>
+                        <label class="visually-hidden" for="mediaSearch">Search by filename, folder, original date taken, event, or tag</label>
+                        <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" id="mediaSearch" name="q" placeholder="Search filename, folder, date taken, event, or tag" value="<?= esc($query) ?>" autocomplete="off" aria-describedby="mediaSearchStatus"></div>
+                        <div class="search-live-status" id="mediaSearchStatus" role="status" aria-live="polite" data-ajax-search-status>Results update automatically as you type.</div>
                     </div>
                     <div class="col-sm-5 col-lg-3">
                         <label class="visually-hidden" for="mediaType">Filter media by file type</label>
@@ -282,13 +328,13 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                     <p class="folder-browser-title"><i class="bi bi-folder2-open me-1"></i><?= $query !== '' ? 'Matching Folders' : ($selectedFolder === null ? 'Folders' : 'Subfolders') ?></p>
                     <p class="folder-browser-subtitle"><?= $selectedFolder === null ? 'Open a folder to view the media uploaded inside it.' : 'Open a subfolder or create another folder inside the current folder.' ?></p>
                     <div class="folder-grid" id="folderBrowserView">
-                        <div class="folder-list-header" aria-hidden="true"><span>Folder name</span><span class="folder-list-modified">Date modified</span><span>File count</span><span class="text-center">Actions</span></div>
-                        <?php foreach ($folders as $folder): ?>
+                        <div class="folder-list-header" aria-hidden="true"><span>Folder name</span><span class="folder-list-modified">Date modified</span><span>Contents</span><span class="text-center">Actions</span></div>
+                        <?php foreach ($folders as $folder): ?><?php $directFileCount=(int)($folder['file_count']??0); $directFolderCount=(int)($folder['subfolder_count']??0); ?>
                             <div class="folder-card" data-library-search="<?= esc(mb_strtolower((string) $folder['name']), 'attr') ?>">
                                 <a class="folder-card-main" href="<?= esc(site_url('workspace/file-management?folder=' . (int) $folder['id'])) ?>" aria-label="Open folder <?= esc($folder['name']) ?>">
-                                    <span class="folder-name-cell"><span class="folder-card-icon"><i class="bi bi-folder-fill"></i></span><span class="min-w-0"><span class="folder-card-name d-block" title="<?= esc($folder['name']) ?>"><?= esc($folder['name']) ?></span><span class="folder-card-meta"><?= esc((string) $folder['file_count']) ?> <?= (int) $folder['file_count'] === 1 ? 'file' : 'files' ?></span></span></span>
+                                    <span class="folder-name-cell"><span class="folder-card-icon"><i class="bi bi-folder-fill"></i></span><span class="min-w-0"><span class="folder-card-name d-block" title="<?= esc($folder['name']) ?>"><?= esc($folder['name']) ?></span><span class="folder-card-meta"><?= $directFileCount ?> file<?= $directFileCount===1?'':'s' ?> &middot; <?= $directFolderCount ?> folder<?= $directFolderCount===1?'':'s' ?></span></span></span>
                                     <span class="folder-list-cell folder-list-modified"><?= esc(! empty($folder['created_at']) ? date('M d, Y', strtotime((string) $folder['created_at'])) : '-') ?></span>
-                                    <span class="folder-list-cell"><?= esc((string) $folder['file_count']) ?> <?= (int) $folder['file_count'] === 1 ? 'file' : 'files' ?></span>
+                                    <span class="folder-list-cell"><?= $directFileCount ?> file<?= $directFileCount===1?'':'s' ?> &middot; <?= $directFolderCount ?> folder<?= $directFolderCount===1?'':'s' ?></span>
                                 </a>
                                 <?php if ($canManage): ?><div class="dropdown folder-card-menu">
                                     <button class="drive-more-button" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for <?= esc($folder['name']) ?>"><i class="bi bi-three-dots-vertical"></i></button>
@@ -357,7 +403,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                                         <?php else: ?>
                                             <span class="file-icon"><i class="bi bi-file-earmark"></i></span>
                                         <?php endif; ?>
-                                        <div><div class="file-name"><?= esc($mediaTitle) ?></div><?php if (! empty($file['description'])): ?><div class="file-description"><?= esc($file['description']) ?></div><?php endif; ?></div>
+                                        <div class="min-w-0"><div class="file-name"><?= esc($mediaTitle) ?></div><?php if (! empty($file['description'])): ?><div class="file-description"><?= esc($file['description']) ?></div><?php endif; ?><?php if ($query !== ''): ?><a class="file-location-link" href="<?= esc(empty($file['containing_folder_id']) ? site_url('workspace/file-management') : site_url('workspace/file-management?folder='.(int)$file['containing_folder_id'])) ?>" title="Open <?= esc((string)($file['folder_display_path']??'Root Library')) ?>"><i class="bi bi-folder2-open"></i><span><?= esc((string)($file['folder_display_path']??'Root Library')) ?></span></a><?php endif; ?></div>
                                     </div>
                                 </td>
                                 <td><span class="file-type"><?= esc($file['filetype'] ?: 'Unknown') ?></span></td>
@@ -411,6 +457,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                             <div class="grid-file-name" title="<?= esc($mediaTitle) ?>"><?= esc($mediaTitle) ?></div>
                             <div class="d-flex align-items-center justify-content-between gap-2"><span class="file-type"><?= esc($file['filetype'] ?: 'Unknown') ?></span><span class="grid-file-info"><?= esc(format_bytes((int) $file['size'])) ?></span></div>
                             <div class="grid-file-info"><i class="bi bi-calendar3 me-1"></i><?= esc($file['dateupload'] ? date('M d, Y', strtotime((string) $file['dateupload'])) : '-') ?></div>
+                            <?php if ($query !== ''): ?><a class="file-location-link" href="<?= esc(empty($file['containing_folder_id']) ? site_url('workspace/file-management') : site_url('workspace/file-management?folder='.(int)$file['containing_folder_id'])) ?>" title="Open <?= esc((string)($file['folder_display_path']??'Root Library')) ?>"><i class="bi bi-folder2-open"></i><span><?= esc((string)($file['folder_display_path']??'Root Library')) ?></span></a><?php endif; ?>
 
                         </div>
                     </article>
@@ -424,6 +471,52 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
 </main>
 <?php if ($canManage): ?>
 <div class="modal fade" id="manualTaggingModal" tabindex="-1" aria-labelledby="manualTaggingTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered" style="max-width:460px"><div class="modal-content"><form id="manualTaggingForm" action="<?= esc(site_url('workspace/file-management/tags')) ?>" method="post"><?= csrf_field() ?><div class="modal-header"><h5 class="modal-title" id="manualTaggingTitle">Manual Tagging</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><label class="form-label" for="manualTagInput">Tags</label><input class="form-control" id="manualTagInput" maxlength="50" placeholder="Enter a tag and press Enter" autocomplete="off"><div class="d-flex flex-wrap gap-2 mt-3" id="manualTagChips"></div><div id="manualTagValues"></div><div id="manualTagFileIds"></div><div class="form-text">Press Enter or comma to add. Tags are trimmed, limited to 50 characters, and duplicates are ignored.</div></div><div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Save Tags</button></div></form></div></div></div>
+<div class="modal fade media-workspace" id="duplicatesModal" tabindex="-1" aria-labelledby="duplicatesModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered duplicate-dialog"><div class="modal-content">
+        <div class="modal-header"><div><h5 class="modal-title" id="duplicatesModalTitle">Duplicates (<?= (int) $duplicateCount ?>)</h5><p class="small text-muted mb-0">Exact and visually similar images detected during upload.</p></div><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body duplicate-modal-body">
+            <div class="duplicate-stats"><div class="duplicate-stat"><strong><?= (int) $duplicateCount ?></strong><span>Duplicate Groups</span></div><div class="duplicate-stat"><strong><?= (int) ($duplicateFileCount ?? 0) ?></strong><span>Duplicate Files</span></div></div>
+            <?php if (($duplicateGroups ?? []) === []): ?><div class="duplicates-empty"><i class="bi bi-images fs-1 d-block mb-2"></i><strong class="d-block text-dark mb-1">No duplicates found</strong>New exact or visually similar uploads will appear here automatically.</div><?php endif; ?>
+            <?php foreach (($duplicateGroups ?? []) as $groupIndex => $duplicateGroup): ?><?php $original = $duplicateGroup['original']; $originalIsImage = str_starts_with(strtolower((string) $original['mime_type']), 'image/') || in_array(strtolower((string) $original['filetype']), $previewableImageTypes, true); ?>
+                <section class="duplicate-group">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2"><div><div class="duplicate-group-title">Group <?= $groupIndex + 1 ?> <span class="badge rounded-pill bg-danger ms-1"><?= count($duplicateGroup['duplicates']) ?></span></div><div class="duplicate-similarity"><?= esc(number_format((float) $duplicateGroup['similarity'], 0)) ?>% similar or better</div></div><button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#duplicateDetails<?= $groupIndex ?>">View details <i class="bi bi-chevron-down ms-1"></i></button></div>
+                    <div class="duplicate-grid">
+                        <article class="duplicate-card">
+                            <div class="dropdown duplicate-card-menu"><button class="drive-more-button bg-white" type="button" data-bs-toggle="dropdown" aria-label="Original file actions"><i class="bi bi-three-dots-vertical"></i></button><ul class="dropdown-menu dropdown-menu-end drive-action-menu"><li><a class="dropdown-item" href="<?= esc(site_url('workspace/file-management/' . (int) $original['id'] . '/download')) ?>"><i class="bi bi-download me-2"></i>Download original</a></li></ul></div>
+                            <?php if ($originalIsImage): ?><a class="duplicate-card-thumb" href="<?= esc(site_url('workspace/file-management/' . (int) $original['id'] . '/preview')) ?>" target="_blank" rel="noopener" aria-label="Open original image preview"><img src="<?= esc(site_url('workspace/file-management/' . (int) $original['id'] . '/preview')) ?>" alt="Preview of <?= esc($original['display_title']) ?>" loading="lazy"></a><?php else: ?><div class="duplicate-card-thumb"><i class="bi bi-file-earmark fs-1"></i></div><?php endif; ?>
+                            <div class="duplicate-card-body"><div class="duplicate-card-name" title="<?= esc($original['filename']) ?>"><?= esc($original['display_title']) ?></div><div><span class="badge bg-primary-subtle text-primary"><?= ! empty($original['watermarked']) ? 'Original (Watermarked)' : 'Original' ?></span></div><div class="duplicate-card-meta"><?= esc(format_bytes((int) $original['size'])) ?> · <?= esc(strtoupper((string) $original['filetype'])) ?><br><?= esc(date('M j, Y · g:i A', strtotime((string) $original['dateupload']))) ?></div></div>
+                        </article>
+                        <?php foreach ($duplicateGroup['duplicates'] as $duplicate): ?><?php $duplicateIsImage = str_starts_with(strtolower((string) $duplicate['mime_type']), 'image/'); ?>
+                            <article class="duplicate-card">
+                                <label class="duplicate-card-select"><input class="form-check-input" type="checkbox" data-duplicate-select value="<?= (int) $duplicate['id'] ?>" aria-label="Select duplicate <?= esc($duplicate['display_title']) ?>"></label>
+                                <div class="dropdown duplicate-card-menu"><button class="drive-more-button bg-white" type="button" data-bs-toggle="dropdown" aria-label="Duplicate file actions"><i class="bi bi-three-dots-vertical"></i></button><ul class="dropdown-menu dropdown-menu-end drive-action-menu"><li><a class="dropdown-item" href="<?= esc(site_url('workspace/file-management/duplicates/' . (int) $duplicate['id'] . '/download')) ?>"><i class="bi bi-download me-2"></i>Download copy</a></li></ul></div>
+                                <?php if ($duplicateIsImage): ?><a class="duplicate-card-thumb" href="<?= esc(site_url('workspace/file-management/duplicates/' . (int) $duplicate['id'] . '/preview')) ?>" target="_blank" rel="noopener" aria-label="Open duplicate image preview"><img src="<?= esc(site_url('workspace/file-management/duplicates/' . (int) $duplicate['id'] . '/preview')) ?>" alt="Preview of <?= esc($duplicate['display_title']) ?>" loading="lazy"></a><?php else: ?><div class="duplicate-card-thumb"><i class="bi bi-file-earmark fs-1"></i></div><?php endif; ?>
+                                <div class="duplicate-card-body"><div class="duplicate-card-name" title="<?= esc($duplicate['filename']) ?>"><?= esc($duplicate['display_title']) ?></div><div><span class="badge bg-warning-subtle text-warning-emphasis"><?= $duplicate['match_type'] === 'exact' ? 'Exact duplicate' : 'Visual duplicate' ?></span> <span class="badge bg-light text-dark"><?= esc(number_format((float) $duplicate['similarity_score'], 0)) ?>%</span> <span class="badge bg-primary-subtle text-primary"><?= ($duplicate['detection_scope'] ?? 'media_library') === 'upload_batch' ? 'Current upload' : 'Media Library' ?></span></div><div class="duplicate-card-meta"><?= esc(format_bytes((int) $duplicate['size'])) ?> · <?= esc(strtoupper((string) pathinfo($duplicate['filename'], PATHINFO_EXTENSION))) ?><br><?= esc(date('M j, Y · g:i A', strtotime((string) $duplicate['created_at']))) ?></div></div>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="collapse" id="duplicateDetails<?= $groupIndex ?>"><div class="duplicate-details"><strong>Match details:</strong> The original is retained in the active media library. <?= count($duplicateGroup['duplicates']) ?> uploaded cop<?= count($duplicateGroup['duplicates']) === 1 ? 'y is' : 'ies are' ?> isolated in the Duplicate Queue. Exact matches compare SHA-256 content; visual matches compare perceptual image fingerprints at a <?= esc(number_format(\App\Services\ImageSimilarityService::MATCH_THRESHOLD, 0)) ?>% threshold.</div></div>
+                </section>
+            <?php endforeach; ?>
+        </div>
+        <form class="modal-footer" id="restoreDuplicatesForm" method="post" action="<?= esc(site_url('workspace/file-management/duplicates/restore')) ?>" onsubmit="return confirm('Restore the selected duplicate copies to File Management?');"><?= csrf_field() ?><span id="restoreDuplicateInputs"></span><span class="small text-muted me-auto" id="duplicateSelectionCount">0 selected</span><button class="btn btn-outline-secondary btn-sm" type="button" id="selectAllDuplicates">Select all</button><button class="btn btn-outline-secondary btn-sm" type="button" id="clearDuplicateSelection" disabled>Clear</button><button class="btn btn-primary" id="restoreSelectedDuplicates" type="submit" disabled><i class="bi bi-arrow-counterclockwise me-1"></i>Restore</button><button class="btn btn-light" type="button" data-bs-dismiss="modal">Close</button></form>
+    </div></div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var boxes = Array.from(document.querySelectorAll('[data-duplicate-select]'));
+    var count = document.getElementById('duplicateSelectionCount');
+    var clear = document.getElementById('clearDuplicateSelection');
+    var selectAll = document.getElementById('selectAllDuplicates');
+    var restore = document.getElementById('restoreSelectedDuplicates');
+    var restoreInputs = document.getElementById('restoreDuplicateInputs');
+    var sync = function () { var selected = boxes.filter(function (box) { return box.checked; }); count.textContent = selected.length + ' selected'; clear.disabled = selected.length === 0; restore.disabled = selected.length === 0; restoreInputs.replaceChildren(); selected.forEach(function (box) { var input=document.createElement('input'); input.type='hidden'; input.name='duplicate_ids[]'; input.value=box.value; restoreInputs.appendChild(input); }); };
+    boxes.forEach(function (box) { box.addEventListener('change', sync); });
+    selectAll.addEventListener('click', function () { boxes.forEach(function (box) { box.checked = true; }); sync(); });
+    clear.addEventListener('click', function () { boxes.forEach(function (box) { box.checked = false; }); sync(); });
+    sync();
+});
+</script>
 <?php endif; ?>
 <?php if ($files !== []): ?>
     <div class="modal fade media-workspace" id="mediaPreviewModal" tabindex="-1" aria-labelledby="mediaPreviewTitle" aria-hidden="true">
@@ -604,18 +697,6 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
             });
         });
 
-        var searchInput = document.getElementById('mediaSearch');
-        if (searchInput) {
-            var filterVisibleLibraryItems = function () {
-                var term = searchInput.value.trim().toLocaleLowerCase();
-                document.querySelectorAll('[data-library-search]').forEach(function (item) {
-                    item.hidden = term !== '' && item.dataset.librarySearch.indexOf(term) === -1;
-                });
-            };
-            searchInput.addEventListener('input', filterVisibleLibraryItems);
-            filterVisibleLibraryItems();
-        }
-
         var tagModal = document.getElementById('manualTaggingModal');
         if (tagModal) {
             var tagInput = document.getElementById('manualTagInput'), tagChips = document.getElementById('manualTagChips'), tagValues = document.getElementById('manualTagValues'), tagFileIds = document.getElementById('manualTagFileIds'), tags = new Map();
@@ -684,7 +765,56 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
         var progressCount = document.getElementById('uploadProgressCount');
         var progressBar = document.getElementById('uploadProgressBar');
         var submitButton = document.getElementById('uploadSubmit');
+        var uploadBatchInput = document.getElementById('uploadBatchId');
+        var duplicateModeHelp = document.getElementById('duplicateModeHelp');
+        var duplicateModeInputs = uploadForm.querySelectorAll('input[name="duplicate_mode"]');
         var csrfInput = uploadForm.querySelector('input[name="<?= esc(csrf_token()) ?>"]');
+        var automaticWatermarkToggle = document.getElementById('automaticWatermarkToggle');
+        var automaticWatermarkStatus = document.getElementById('automaticWatermarkStatus');
+
+        if (automaticWatermarkToggle) {
+            automaticWatermarkToggle.addEventListener('change', async function () {
+                var requestedState = automaticWatermarkToggle.checked;
+                automaticWatermarkToggle.disabled = true;
+                automaticWatermarkStatus.textContent = 'Saving watermark preference...';
+                var toggleData = new FormData();
+                toggleData.append('enabled', requestedState ? '1' : '0');
+                if (csrfInput) { toggleData.append(csrfInput.name, csrfInput.value); }
+                try {
+                    var toggleResponse = await fetch(automaticWatermarkToggle.dataset.url, {
+                        method: 'POST',
+                        body: toggleData,
+                        credentials: 'same-origin',
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    var togglePayload = await toggleResponse.json();
+                    if (togglePayload.csrfToken && csrfInput) { csrfInput.value = togglePayload.csrfToken; }
+                    if (!toggleResponse.ok || !togglePayload.ok) { throw new Error(togglePayload.message || 'The watermark preference could not be saved.'); }
+                    automaticWatermarkToggle.checked = !!togglePayload.enabled;
+                    automaticWatermarkStatus.textContent = togglePayload.enabled
+                        ? 'Enabled for new Creative Department image uploads.'
+                        : 'Disabled for new Creative Department image uploads.';
+                } catch (error) {
+                    automaticWatermarkToggle.checked = !requestedState;
+                    automaticWatermarkStatus.textContent = error.message || 'The watermark preference could not be saved.';
+                } finally {
+                    automaticWatermarkToggle.disabled = false;
+                }
+            });
+        }
+
+        var selectedDuplicateMode = function () {
+            var selected = uploadForm.querySelector('input[name="duplicate_mode"]:checked');
+            return selected ? selected.value : 'media_library';
+        };
+        var duplicateModeName = function (mode) { return mode === 'upload_batch' ? 'Current upload' : 'Media Library'; };
+        var updateDuplicateModeHelp = function () {
+            duplicateModeHelp.textContent = selectedDuplicateMode() === 'upload_batch'
+                ? 'Checks for exact or visually similar copies only within this upload.'
+                : 'Checks selected files against media stored before this upload.';
+        };
+        duplicateModeInputs.forEach(function (input) { input.addEventListener('change', updateDuplicateModeHelp); });
+        updateDuplicateModeHelp();
 
         var updateSelection = function () {
             var fileCount = filesInput.files.length;
@@ -723,6 +853,11 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
             }
 
             var destinationFolder = document.getElementById('folder_id').value;
+            var duplicateMode = selectedDuplicateMode();
+            var uploadBatchId = window.crypto && typeof window.crypto.randomUUID === 'function'
+                ? window.crypto.randomUUID().replace(/-/g, '')
+                : Date.now().toString(36) + Math.random().toString(36).slice(2);
+            uploadBatchInput.value = uploadBatchId;
             var csrfToken = csrfInput ? csrfInput.value : '';
             var completed = 0;
             var successful = 0;
@@ -735,7 +870,7 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
 
             for (var index = 0; index < queuedFiles.length; index += 1) {
                 var item = queuedFiles[index];
-                progressLabel.textContent = 'Uploading ' + item.file.name;
+                progressLabel.textContent = 'Uploading ' + item.file.name + ' · ' + duplicateModeName(duplicateMode) + ' scan';
                 progressCount.textContent = (index + 1) + ' of ' + queuedFiles.length;
                 progressBar.style.width = Math.round((index / queuedFiles.length) * 100) + '%';
 
@@ -743,6 +878,8 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
                 formData.append('file', item.file);
                 formData.append('folder_id', destinationFolder);
                 formData.append('relative_path', item.relativePath);
+                formData.append('duplicate_mode', duplicateMode);
+                formData.append('upload_batch_id', uploadBatchId);
                 if (csrfInput) { formData.append(csrfInput.name, csrfToken); }
 
                 try {
@@ -772,10 +909,14 @@ $workspaceMediaUrl = static function (int $fileId, string $action): string {
             progressBar.classList.remove('progress-bar-animated');
             progressCount.textContent = successful + ' uploaded, ' + errors.length + ' skipped';
             progressLabel.textContent = errors.length === 0
-                ? 'Upload complete. Refreshing your media library...'
-                : 'Upload complete. ' + errors.slice(0, 2).join(' ');
+                ? 'Upload complete using ' + duplicateModeName(duplicateMode) + ' duplicate scanning. Updating your media library...'
+                : 'Upload complete using ' + duplicateModeName(duplicateMode) + ' scanning. ' + errors.slice(0, 2).join(' ');
             if (successful > 0) {
-                window.setTimeout(function () { window.location.reload(); }, errors.length === 0 ? 900 : 2800);
+                window.setTimeout(function () {
+                    if (window.GreyhoundAjax) {
+                        window.GreyhoundAjax.refresh({ preserveScroll: true });
+                    }
+                }, errors.length === 0 ? 900 : 2800);
             } else {
                 submitButton.disabled = false;
                 progressBar.classList.add('bg-danger');

@@ -40,7 +40,7 @@ $actionLabel = static function (?string $action): string {
                     <span class="badge bg-primary rounded-pill"><?= count($logs) ?> shown</span>
                 </div>
 
-                <form class="row g-2 my-3" method="get">
+                <form class="row g-2 my-3" method="get" data-ajax-live-search>
                     <div class="col-lg-3 col-md-6">
                         <label class="visually-hidden" for="auditUser">User</label>
                         <input class="form-control" id="auditUser" name="user" placeholder="User name or employee ID" value="<?= esc($filterUser) ?>">

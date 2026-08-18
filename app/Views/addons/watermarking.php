@@ -38,7 +38,6 @@
                     <?php if ($isAdmin): ?>
                         <form class="row g-3" action="<?= esc(site_url('workspace/watermarking/settings')) ?>" method="post">
                             <?= csrf_field() ?>
-                            <div class="col-12"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="enabled" name="enabled" value="1" <?= $enabled ? 'checked' : '' ?>><label class="form-check-label" for="enabled">Apply logo automatically on Creative uploads</label></div></div>
                             <div class="col-12"><label class="form-label">Default logo</label><div class="logo-grid">
                                 <?php foreach ($logos as $logo): ?><div class="logo-option"><input type="radio" id="default_logo_<?= esc($logo['code']) ?>" name="logo_code" value="<?= esc($logo['code']) ?>" <?= $defaultLogoCode === $logo['code'] ? 'checked' : '' ?> required><label for="default_logo_<?= esc($logo['code']) ?>"><img src="<?= esc(site_url('workspace/watermarking/logo/' . $logo['code'])) ?>" alt="<?= esc($logo['label']) ?> logo"><span><?= esc($logo['code']) ?></span></label></div><?php endforeach; ?>
                             </div></div>

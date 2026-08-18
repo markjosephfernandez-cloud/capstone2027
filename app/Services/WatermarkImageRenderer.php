@@ -26,6 +26,7 @@ final class WatermarkImageRenderer
             }
             return ['written' => false, 'reason' => 'The source image or selected logo could not be opened.'];
         }
+        $image = $this->applyExifOrientation($image, $this->exifOrientation($source, $extension));
 
         $width = imagesx($image);
         $height = imagesy($image);
@@ -67,6 +68,54 @@ final class WatermarkImageRenderer
         return $written && is_file($destination)
             ? ['written' => true]
             : ['written' => false, 'reason' => 'The logo-watermarked image could not be saved.'];
+    }
+
+    private function exifOrientation(string $source, string $extension): int
+    {
+        if (! in_array($extension, ['jpg', 'jpeg'], true) || ! function_exists('exif_read_data')) {
+            return 1;
+        }
+
+        $exif = @exif_read_data($source, 'IFD0', true);
+        if (! is_array($exif)) {
+            return 1;
+        }
+
+        return max(1, min(8, (int) ($exif['IFD0']['Orientation'] ?? $exif['Orientation'] ?? 1)));
+    }
+
+    private function applyExifOrientation(\GdImage $image, int $orientation): \GdImage
+    {
+        if ($orientation === 2) {
+            imageflip($image, IMG_FLIP_HORIZONTAL);
+        } elseif ($orientation === 3) {
+            $image = $this->rotate($image, 180);
+        } elseif ($orientation === 4) {
+            imageflip($image, IMG_FLIP_VERTICAL);
+        } elseif ($orientation === 5) {
+            $image = $this->rotate($image, 90);
+            imageflip($image, IMG_FLIP_HORIZONTAL);
+        } elseif ($orientation === 6) {
+            $image = $this->rotate($image, -90);
+        } elseif ($orientation === 7) {
+            $image = $this->rotate($image, -90);
+            imageflip($image, IMG_FLIP_HORIZONTAL);
+        } elseif ($orientation === 8) {
+            $image = $this->rotate($image, 90);
+        }
+
+        return $image;
+    }
+
+    private function rotate(\GdImage $image, float $degrees): \GdImage
+    {
+        $rotated = imagerotate($image, $degrees, 0);
+        if ($rotated === false) {
+            return $image;
+        }
+
+        imagedestroy($image);
+        return $rotated;
     }
 
     private function applyOpacity(\GdImage $image, int $opacity): void

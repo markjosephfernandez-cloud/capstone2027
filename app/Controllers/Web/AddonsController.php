@@ -20,21 +20,62 @@
                 return $this->missingAddon('passports', 'Metadata Passports');
             }
 
-            $passports = $db->table('passports p')
-                ->select('p.*, f.id AS file_id, f.display_title, f.filetype')
-                ->join('files f', 'f.id = p.media_id', 'left')
+            $search = trim((string) $this->request->getGet('q'));
+            if (mb_strlen($search) > 100) {
+                $search = mb_substr($search, 0, 100);
+            }
+            $perPage = 20;
+            $requestedPage = max(1, (int) $this->request->getGet('page'));
+
+            $passportQuery = $db->table('passports p')
+                ->join('files f', 'f.id = p.media_id')
+                ->join('user u', 'u.employee_id = p.uploaded_by', 'left')
+                ->where('f.is_deleted', 0);
+            if ($search !== '') {
+                $passportQuery
+                    ->groupStart()
+                    ->like('f.filename', $search)
+                    ->orLike('f.display_title', $search)
+                    ->orLike('p.date_taken', $search)
+                    ->orLike('p.event_name', $search)
+                    ->groupEnd();
+            }
+
+            $matchingTotal = (clone $passportQuery)->countAllResults();
+            $totalPages = max(1, (int) ceil($matchingTotal / $perPage));
+            $currentPage = min($requestedPage, $totalPages);
+            $offset = ($currentPage - 1) * $perPage;
+
+            $passports = $passportQuery
+                ->select('p.*, f.id AS file_id, f.display_title, f.filename, f.filetype, f.mime_type, f.size, u.name AS uploader_name')
                 ->orderBy('p.updated_at', 'DESC')
-                ->limit(100)
+                ->limit($perPage, $offset)
                 ->get()
                 ->getResultArray();
             $summary = [
-                'total'        => (int) $db->table('passports')->countAllResults(),
-                'ai_flags' => (int) $db->table('passports')->where('needs_review', 1)->countAllResults(),
+                'total' => (int) $db->table('passports p')
+                    ->join('files f', 'f.id = p.media_id')
+                    ->where('f.is_deleted', 0)
+                    ->countAllResults(),
+                'ai_flags' => (int) $db->table('passports p')
+                    ->join('files f', 'f.id = p.media_id')
+                    ->where('f.is_deleted', 0)
+                    ->where('p.needs_review', 1)
+                    ->countAllResults(),
             ];
 
             return view('addons/passports', $this->pageData('passports', 'Metadata Passports', [
                 'passports' => $passports,
                 'summary' => $summary,
+                'searchQuery' => $search,
+                'pagination' => [
+                    'current_page' => $currentPage,
+                    'total_pages' => $totalPages,
+                    'total_results' => $matchingTotal,
+                    'per_page' => $perPage,
+                    'from' => $matchingTotal === 0 ? 0 : $offset + 1,
+                    'to' => min($offset + $perPage, $matchingTotal),
+                ],
                 'isAdmin' => RolePolicy::isCreativeAdmin(session()->get()),
                 'success' => session()->getFlashdata('success'),
                 'error' => session()->getFlashdata('error'),
@@ -106,15 +147,15 @@
                 return redirect()->to(site_url('workspace/watermarking'))->with('error', 'Check the selected logo, position, opacity, and scale values.');
             }
 
+            $existing = $db->table('watermark_settings')->orderBy('id', 'ASC')->get(1)->getRowArray();
             $payload = [
-                'enabled'        => $this->request->getPost('enabled') === '1' ? 1 : 0,
+                'enabled'        => (int) ($existing['enabled'] ?? 0),
                 'logo_path'      => $logoCode,
                 'position'       => $position,
                 'opacity'        => $opacity,
                 'resize_percent' => $resizePercent,
                 'updated_by'     => (string) ($actor['employee_id'] ?? ''),
             ];
-            $existing = $db->table('watermark_settings')->orderBy('id', 'ASC')->get(1)->getRowArray();
             if ($existing === null) {
                 $payload['id'] = 1;
                 $db->table('watermark_settings')->insert($payload);
@@ -274,7 +315,7 @@
                     $row = $db->table('files')->select('display_title, filename')->where('id', $id)->get()->getRowArray();
                     $label = $row ? \App\Libraries\MediaTitle::forFile($row) : 'File #' . $id;
                 } elseif ($type === 'folder' && $db->tableExists('folder')) {
-                    $row = $db->table('folder')->select('name')->where('id', $id)->get()->getRowArray();
+                    $row = $db->table('folder')->select('name')->where('id', $id)->where('is_deleted', 0)->get()->getRowArray();
                     $label = $row ? (string) $row['name'] : 'Folder #' . $id;
                 } elseif ($type === 'user' && $db->tableExists('user')) {
                     $row = $db->table('user')->select('name')->where('employee_id', $id)->get()->getRowArray();

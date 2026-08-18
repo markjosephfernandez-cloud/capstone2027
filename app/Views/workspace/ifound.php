@@ -23,7 +23,7 @@ $eventOptions = array_keys((new \Config\GreyhoundAi())->eventKeywords);
             <div class="card-body">
                 <h5 class="card-title">University Event Search</h5>
                 <p class="text-muted">Search file metadata and event classifications for Dal-uy, Kasadyaan, EXPO, and other university media.</p>
-                <form class="row g-2 mb-3" method="get">
+                <form class="row g-2 mb-3" method="get" data-ajax-live-search>
                     <div class="col-md-9">
                         <label class="visually-hidden" for="ifoundSearch">Search event, file, tag, or classification</label>
                         <input class="form-control" id="ifoundSearch" name="q" value="<?= esc($term) ?>" placeholder="e.g. Kasadyaan, EXPO, person, graduation">

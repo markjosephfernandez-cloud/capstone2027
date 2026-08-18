@@ -7,6 +7,7 @@
     <section class="section">
         <div class="card">
             <div class="card-body pt-3">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3"><div><h5 class="card-title p-0 m-0">All notifications</h5><span class="small text-muted">Review updates sent to your account.</span></div><?php if ((int) ($unreadCount ?? 0) > 0): ?><form action="<?= esc(site_url('notifications/read-all')) ?>" method="post"><?= csrf_field() ?><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-check2-all me-1"></i>Read all</button></form><?php endif; ?></div>
                 <div class="list-group list-group-flush">
                     <?php foreach ($notifications as $notification): ?>
                         <form class="list-group-item px-0" action="<?= esc(site_url('notifications/' . (int) $notification['id'] . '/read')) ?>" method="post">

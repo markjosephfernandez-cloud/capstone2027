@@ -10,6 +10,8 @@ final class RolePolicyTest extends CIUnitTestCase
     {
         $this->assertTrue(RolePolicy::allows(['role' => 'admin'], 'files.upload'));
         $this->assertTrue(RolePolicy::allows(['role' => 'admin'], 'distribution.manage'));
+        $this->assertTrue(RolePolicy::allows(['role' => 'admin'], 'files.delete_permanently'));
+        $this->assertFalse(RolePolicy::allows(['role' => 'staff'], 'files.delete_permanently'));
         $this->assertFalse(RolePolicy::allows(['role' => 'writer'], 'files.upload'));
         $this->assertTrue(RolePolicy::allows(['role' => 'writer'], 'files.download'));
     }

@@ -13,6 +13,10 @@ class NotificationController extends BaseController
         }
 
         $userId = (string) session()->get('employee_id');
+        $unreadCount = db_connect()->table('notifications')
+            ->where('recipient_id', $userId)
+            ->where('is_read', 0)
+            ->countAllResults();
         $notifications = db_connect()->table('notifications')
             ->where('recipient_id', $userId)
             ->orderBy('created_at', 'DESC')
@@ -25,6 +29,7 @@ class NotificationController extends BaseController
             'activePage' => 'notifications',
             'title' => 'Notifications',
             'notifications' => $notifications,
+            'unreadCount' => $unreadCount,
         ]);
     }
 
@@ -41,5 +46,19 @@ class NotificationController extends BaseController
         db_connect()->table('notifications')->where('id', $id)->update(['is_read' => 1]);
         $link = trim((string) ($notification['link'] ?? ''));
         return redirect()->to($link !== '' ? $link : site_url('dashboard'));
+    }
+
+    public function readAll()
+    {
+        if (session()->get('isLoggedIn') !== true) {
+            return redirect()->to(site_url('login'));
+        }
+
+        db_connect()->table('notifications')
+            ->where('recipient_id', (string) session()->get('employee_id'))
+            ->where('is_read', 0)
+            ->update(['is_read' => 1]);
+
+        return redirect()->back();
     }
 }

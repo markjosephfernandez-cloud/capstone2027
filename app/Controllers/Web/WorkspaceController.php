@@ -10,6 +10,7 @@ use App\Models\FolderModel;
 use App\Models\RecentModel;
 use App\Models\TagModel;
 use App\Services\TrashService;
+use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\HTTP\Files\UploadedFile;
 use Config\GreyhoundAi;
 use RuntimeException;
@@ -49,41 +50,76 @@ class WorkspaceController extends BaseController
                 'folder_id'
             ))));
         }
+        $allActiveFolders = (new FolderModel())->where('is_deleted', 0)->orderBy('name', 'ASC')->findAll();
+        $allActiveFolderById = [];
+        foreach ($allActiveFolders as $folder) {
+            $allActiveFolderById[(int) $folder['id']] = $folder;
+        }
+        $departmentAccessibleFolderIds = $departmentFolderIds;
+        if ($departmentUser) {
+            $assignedFileFolders = $db->table('files f')
+                ->select('f.folder_id')
+                ->join('media_assignments ma', 'ma.media_id = f.id', 'inner')
+                ->where('ma.department', (string) ($actor['department'] ?? ''))
+                ->where('f.is_deleted', 0)
+                ->where('f.folder_id IS NOT NULL', null, false)
+                ->groupBy('f.folder_id')
+                ->get()
+                ->getResultArray();
+            $departmentAccessibleFolderIds = $this->folderIdsWithAncestors(
+                array_merge($departmentAccessibleFolderIds, array_map('intval', array_column($assignedFileFolders, 'folder_id'))),
+                $allActiveFolderById
+            );
+        }
         $folderId = filter_var($this->request->getGet('folder'), FILTER_VALIDATE_INT);
         $folderId = $folderId !== false && $folderId > 0 ? $folderId : null;
         if ($query !== '') {
             $folderId = null;
         }
-        $selectedFolder = $folderId === null ? null : (new FolderModel())->find($folderId);
-        if ($folderId !== null && ($selectedFolder === null || ($departmentUser && ! in_array($folderId, $departmentFolderIds, true)))) {
+        $selectedFolder = $folderId === null ? null : ($allActiveFolderById[$folderId] ?? null);
+        if ($folderId !== null && ($selectedFolder === null || ($departmentUser && ! in_array($folderId, $departmentAccessibleFolderIds, true)))) {
             return redirect()->to(site_url('workspace/file-management'))->with('error', 'The requested folder is unavailable.');
         }
 
         $folderQuery = $db->table('folder fo')
-            ->select('fo.id, fo.name, fo.description, fo.path, fo.created_at, COUNT(f.id) AS file_count')
-            ->join('files f', 'f.folder_id = fo.id AND f.is_deleted = 0', 'left');
+            ->select('fo.id, fo.name, fo.description, fo.path, fo.created_at, COUNT(DISTINCT f.id) AS file_count, (SELECT COUNT(*) FROM folder child WHERE child.parent_id = fo.id AND child.is_deleted = 0) AS subfolder_count', false)
+            ->join('files f', 'f.folder_id = fo.id AND f.is_deleted = 0', 'left')
+            ->where('fo.is_deleted', 0);
         if ($query !== '') {
-            $folderQuery->like('fo.name', $query);
+            $folderQuery->groupStart()->like('fo.name', $query)->orLike('fo.path', $query)->groupEnd();
         } elseif ($folderId === null) {
             $folderQuery->where('fo.parent_id IS NULL', null, false);
         } else {
             $folderQuery->where('fo.parent_id', $folderId);
         }
-        if ($departmentUser && $hasFolderAssignments) {
-            $receivedFolders = $db->table('folder fo')
-                ->select('fo.id, fo.parent_id, fo.name, fo.description, fo.path, fo.created_at, COUNT(DISTINCT ma.media_id) AS file_count')
-                ->join('media_assignment_folders maf', 'maf.folder_id = fo.id', 'inner')
-                ->join('files f', "f.folder_id = fo.id AND f.is_deleted = 0", 'left')
-                ->join('media_assignments ma', 'ma.media_id = f.id AND ma.department = maf.department', 'left')
-                ->where('maf.department', (string) ($actor['department'] ?? ''))
-                ->groupBy('fo.id, fo.parent_id, fo.name, fo.description, fo.path, fo.created_at')
-                ->get()
-                ->getResultArray();
+        if ($departmentUser) {
+            $receivedFolders = [];
+            if ($departmentAccessibleFolderIds !== []) {
+                $receivedFolders = $db->table('folder fo')
+                    ->select('fo.id, fo.parent_id, fo.name, fo.description, fo.path, fo.created_at, COUNT(DISTINCT ma.media_id) AS file_count', false)
+                    ->join('files f', 'f.folder_id = fo.id AND f.is_deleted = 0', 'left')
+                    ->join('media_assignments ma', 'ma.media_id = f.id AND ma.department = ' . $db->escape((string) ($actor['department'] ?? '')), 'left')
+                    ->where('fo.is_deleted', 0)
+                    ->whereIn('fo.id', $departmentAccessibleFolderIds)
+                    ->groupBy('fo.id, fo.parent_id, fo.name, fo.description, fo.path, fo.created_at')
+                    ->get()
+                    ->getResultArray();
+            }
             $receivedFolderIds = array_values(array_unique(array_map('intval', array_column($receivedFolders, 'id'))));
             $receivedFolderSet = array_fill_keys($receivedFolderIds, true);
+            foreach ($receivedFolders as &$receivedFolder) {
+                $receivedFolder['display_path'] = $this->folderDisplayPath($receivedFolder, $allActiveFolderById);
+                $receivedFolder['subfolder_count'] = count(array_filter(
+                    $receivedFolders,
+                    static fn (array $candidate): bool => (int) ($candidate['parent_id'] ?? 0) === (int) $receivedFolder['id']
+                ));
+            }
+            unset($receivedFolder);
             $folders = array_values(array_filter($receivedFolders, static function (array $folder) use ($folderId, $query, $receivedFolderSet): bool {
                 if ($query !== '') {
-                    return stripos((string) $folder['name'], $query) !== false;
+                    return stripos((string) $folder['name'], $query) !== false
+                        || stripos((string) ($folder['path'] ?? ''), $query) !== false
+                        || stripos((string) ($folder['display_path'] ?? ''), $query) !== false;
                 }
                 if ($folderId !== null) {
                     return (int) ($folder['parent_id'] ?? 0) === $folderId;
@@ -93,17 +129,14 @@ class WorkspaceController extends BaseController
             }));
             $allFolders = $receivedFolders;
         } else {
-            $folders = $departmentUser ? [] : $folderQuery
+            $folders = $folderQuery
                 ->groupBy('fo.id, fo.name, fo.description, fo.path, fo.created_at')
                 ->orderBy('fo.name', 'ASC')
                 ->get()
                 ->getResultArray();
-            $allFolders = $departmentUser ? [] : (new FolderModel())->orderBy('name', 'ASC')->findAll();
+            $allFolders = $allActiveFolders;
         }
-        $folderById = [];
-        foreach ($allFolders as $folder) {
-            $folderById[(int) $folder['id']] = $folder;
-        }
+        $folderById = $allActiveFolderById;
         $folderOptions = [];
         foreach ($allFolders as $folder) {
             $folder['display_name'] = $this->folderDisplayPath($folder, $folderById);
@@ -112,6 +145,7 @@ class WorkspaceController extends BaseController
         usort($folderOptions, static fn (array $left, array $right): int => strcasecmp((string) $left['display_name'], (string) $right['display_name']));
         $parentFolder = $selectedFolder === null || empty($selectedFolder['parent_id']) ? null : ($folderById[(int) $selectedFolder['parent_id']] ?? null);
         $selectedFolderPath = $selectedFolder === null ? 'All media' : $this->folderDisplayPath($selectedFolder, $folderById);
+        $matchingFolderIds = $query === '' ? [] : $this->matchingFolderIds($allActiveFolders, $folderById, $query);
 
         $files = $db->table('files f')->select('f.*')->where('f.is_deleted', 0);
         if ($departmentUser) {
@@ -120,19 +154,14 @@ class WorkspaceController extends BaseController
                 ->groupBy('f.id');
         }
         if ($query !== '') {
-            $files->groupStart()
-                ->like('f.display_title', $query)
-                ->orLike('f.tags', $query)
-                ->orLike('f.classification', $query)
-                ->orLike('f.detected_objects', $query)
-                ->groupEnd();
+            $files = $this->applyFileManagementSearch($files, $query, $matchingFolderIds, $db->tableExists('passports'));
         } elseif ($folderId === null) {
             if (! $departmentUser) {
                 $files->where('f.folder_id IS NULL', null, false);
-            } elseif ($departmentFolderIds !== []) {
+            } elseif ($departmentAccessibleFolderIds !== []) {
                 $files->groupStart()
                     ->where('f.folder_id IS NULL', null, false)
-                    ->orWhereNotIn('f.folder_id', $departmentFolderIds)
+                    ->orWhereNotIn('f.folder_id', $departmentAccessibleFolderIds)
                     ->groupEnd();
             }
         } else {
@@ -149,13 +178,33 @@ class WorkspaceController extends BaseController
         }
 
         $fileTypes = $db->table('files')->select('filetype')->where('is_deleted', 0)->where('filetype IS NOT NULL', null, false);
-        if ($folderId === null) {
-            $fileTypes->where('folder_id IS NULL', null, false);
-        } else {
-            $fileTypes->where('folder_id', $folderId);
+        if ($query === '') {
+            if ($folderId === null) {
+                $fileTypes->where('folder_id IS NULL', null, false);
+            } else {
+                $fileTypes->where('folder_id', $folderId);
+            }
         }
 
-        $listedFiles = $files->orderBy('f.dateupload', 'DESC')->limit(100)->get()->getResultArray();
+        $files->orderBy('f.dateupload', 'DESC');
+        if ($query === '') {
+            $files->limit(100);
+        }
+        $listedFiles = $files->get()->getResultArray();
+        foreach ($listedFiles as &$listedFile) {
+            $containingFolderId = empty($listedFile['folder_id']) ? null : (int) $listedFile['folder_id'];
+            $containingFolder = $containingFolderId === null ? null : ($folderById[$containingFolderId] ?? null);
+            $listedFile['folder_display_path'] = $containingFolder === null
+                ? 'Root Library'
+                : $this->folderDisplayPath($containingFolder, $folderById);
+            $listedFile['containing_folder_id'] = $containingFolderId;
+        }
+        unset($listedFile);
+        $duplicateGroups = RolePolicy::allows($actor, 'duplicates.view') ? $this->duplicateGroups() : [];
+        $duplicateFileCount = array_sum(array_map(static fn (array $group): int => count($group['duplicates']), $duplicateGroups));
+        $watermarkSettings = $db->tableExists('watermark_settings')
+            ? ($db->table('watermark_settings')->orderBy('id', 'ASC')->get(1)->getRowArray() ?? [])
+            : [];
         return view('workspace/media', $this->pageData('file-management', 'File Management', [
             'files'          => $listedFiles,
             'fileTypes'      => $fileTypes->groupBy('filetype')->orderBy('filetype')->get()->getResultArray(),
@@ -171,8 +220,12 @@ class WorkspaceController extends BaseController
             'distribution'   => $distribution,
             'canManage'      => RolePolicy::allows($actor, 'files.manage'),
             'canUpload'      => RolePolicy::allows($actor, 'files.upload'),
+            'canToggleWatermark' => RolePolicy::isCreativeAdmin($actor) && $db->tableExists('watermark_settings'),
+            'watermarkEnabled' => ! empty($watermarkSettings['enabled']),
             'isDepartment'   => $departmentUser,
-            'duplicateCount' => $db->tableExists('duplicate_media') ? (int) $db->table('duplicate_media')->where('status', 'pending')->countAllResults() : 0,
+            'duplicateCount' => count($duplicateGroups),
+            'duplicateFileCount' => $duplicateFileCount,
+            'duplicateGroups' => $duplicateGroups,
             'departments'    => $db->table('user')->select('department')->where('department !=', '')->groupBy('department')->orderBy('department')->get()->getResultArray(),
             'openRequests'   => $db->tableExists('media_requests') ? $db->table('media_requests')->where('status', 'submitted')->orderBy('submitted_at', 'DESC')->get()->getResultArray() : [],
             'success'        => session()->getFlashdata('success'),
@@ -202,7 +255,7 @@ class WorkspaceController extends BaseController
         if ($folderId === false || ($folderId !== null && $folderId < 1)) {
             return $this->uploadResult([], ['Choose a valid destination folder.']);
         }
-        $folder = $folderId === null ? null : (new FolderModel())->find((int) $folderId);
+        $folder = $folderId === null ? null : (new FolderModel())->where('is_deleted', 0)->find((int) $folderId);
         if ($folderId !== null && $folder === null) {
             return $this->uploadResult([], ['The chosen destination folder is unavailable.']);
         }
@@ -215,6 +268,18 @@ class WorkspaceController extends BaseController
         $uploads = $this->uploadsFromRequest();
         if ($uploads === []) {
             return $this->uploadResult([], ['Choose one or more files, or select a folder to upload.']);
+        }
+        $duplicateScope = trim((string) $this->request->getPost('duplicate_mode'));
+        $duplicateScope = $duplicateScope === '' ? 'media_library' : $duplicateScope;
+        if (! in_array($duplicateScope, ['upload_batch', 'media_library'], true)) {
+            return $this->uploadResult([], ['Choose a valid duplicate scan mode.']);
+        }
+        $uploadBatchId = trim((string) $this->request->getPost('upload_batch_id'));
+        if ($uploadBatchId === '') {
+            $uploadBatchId = bin2hex(random_bytes(16));
+        }
+        if (preg_match('/^[A-Za-z0-9_-]{8,64}$/', $uploadBatchId) !== 1) {
+            return $this->uploadResult([], ['The upload batch identifier is invalid.']);
         }
 
         $successful = [];
@@ -231,10 +296,15 @@ class WorkspaceController extends BaseController
             $name      = $displayTitle;
 
             try {
+                $targetDirectory = $this->uploadDirectory($directory, $uploadItem['relativePath']);
+                $fileFolderId = $this->ensureUploadFolderHierarchy($folder, $uploadItem['relativePath']);
                 $contentHash = hash_file('sha256', $uploaded->getTempName());
-                $original = $contentHash === false ? null : (new FileModel())->where('is_deleted', 0)->groupStart()->where('content_hash', $contentHash)->orWhere('filehash', $contentHash)->groupEnd()->first();
+                $imageFingerprint = service('imageSimilarity')->fingerprint($uploaded->getTempName(), (string) $uploaded->getMimeType());
+                $similarityScore = 100.0;
+                $matchType = 'exact';
+                $original = $contentHash === false ? null : $this->duplicateCandidates($uploadBatchId, $duplicateScope)->groupStart()->where('content_hash', $contentHash)->orWhere('filehash', $contentHash)->groupEnd()->first();
                 if ($original === null && $contentHash !== false) {
-                    foreach ((new FileModel())->where('is_deleted', 0)->where('size', (int) $uploaded->getSize())->findAll(50) as $candidate) {
+                    foreach ($this->duplicateCandidates($uploadBatchId, $duplicateScope)->where('size', (int) $uploaded->getSize())->findAll(50) as $candidate) {
                         try {
                             $candidateHash = hash_file('sha256', service('storage')->resolveDatabaseFile((string) $candidate['filepath']));
                         } catch (RuntimeException) {
@@ -249,12 +319,20 @@ class WorkspaceController extends BaseController
                         }
                     }
                 }
+                if ($original === null && $imageFingerprint !== null) {
+                    $visualMatch = service('imageSimilarity')->findBestMatch($imageFingerprint, 1000, $uploadBatchId, $duplicateScope);
+                    if ($visualMatch !== null) {
+                        $original = $visualMatch['file'];
+                        $similarityScore = (float) $visualMatch['similarity'];
+                        $matchType = 'visual';
+                    }
+                }
                 if ($original !== null) {
                     $stored = service('storage')->storeUpload($uploaded, 'Duplicate Queue');
                     $db = db_connect();
                     $db->transStart();
                     $transactionOpen = true;
-                    $db->table('duplicate_media')->insert(['original_file_id' => (int) $original['id'], 'filename' => $stored['filename'], 'display_title' => $displayTitle, 'filepath' => $stored['filepath'], 'mime_type' => $stored['mimeType'], 'size' => $stored['size'], 'content_hash' => $contentHash, 'uploaded_by' => (int) $actor['employee_id'], 'status' => 'pending', 'created_at' => gmdate('Y-m-d H:i:s')]);
+                    $db->table('duplicate_media')->insert(['original_file_id' => (int) $original['id'], 'filename' => $stored['filename'], 'display_title' => $displayTitle, 'filepath' => $stored['filepath'], 'mime_type' => $stored['mimeType'], 'size' => $stored['size'], 'content_hash' => $contentHash, 'image_fingerprint' => $imageFingerprint, 'match_type' => $matchType, 'similarity_score' => $similarityScore, 'upload_batch_id' => $uploadBatchId, 'detection_scope' => $duplicateScope, 'uploaded_by' => (int) $actor['employee_id'], 'status' => 'pending', 'created_at' => gmdate('Y-m-d H:i:s')]);
                     $db->table('files')->where('id', (int) $original['id'])->set('duplicate_count', 'duplicate_count + 1', false)->update();
                     $db->transComplete();
                     $transactionOpen = false;
@@ -262,13 +340,12 @@ class WorkspaceController extends BaseController
                         @unlink($stored['filepath']);
                         throw new RuntimeException('The duplicate could not be saved to Duplicate Queue.');
                     }
-                    service('audit')->record($actor, $this->request, 'upload', 'DUPLICATE_DETECTED', 'file', (int) $original['id'], 'Saved duplicate upload "' . $stored['filename'] . '" to Duplicate Queue; the original was not changed.');
+                    service('audit')->record($actor, $this->request, 'upload', 'DUPLICATE_DETECTED', 'file', (int) $original['id'], 'Saved ' . ($matchType === 'exact' ? 'exact duplicate' : number_format($similarityScore, 2) . '% visually similar') . ' upload "' . $stored['filename'] . '" to Duplicate Queue; the original was not changed.');
                     $successful[] = $displayTitle . ' (duplicate queued)';
                     continue;
                 }
                 // `storage_stage=raw` is the authoritative Raw Files location;
                 // retain legacy folder paths so existing rename/restore behavior stays compatible.
-                $targetDirectory = $this->uploadDirectory($directory, $uploadItem['relativePath']);
                 $stored          = service('storage')->storeUpload($uploaded, $targetDirectory);
                 $db              = db_connect();
                 $db->transStart();
@@ -284,7 +361,7 @@ class WorkspaceController extends BaseController
                     'dateupload'     => gmdate('Y-m-d H:i:s'),
                     'description'    => $description,
                     'employee_id'    => (int) $actor['employee_id'],
-                    'folder_id'      => $folderId === null ? null : (int) $folderId,
+                    'folder_id'      => $fileFolderId,
                     'is_deleted'     => 0,
                     'downloadable'   => 1,
                     'release_status' => 'draft',
@@ -293,6 +370,8 @@ class WorkspaceController extends BaseController
                     'distribution_type' => null,
                     'distribution_target' => null,
                     'content_hash'   => $contentHash ?: null,
+                    'image_fingerprint' => $imageFingerprint,
+                    'upload_batch_id' => $uploadBatchId,
                     'last_action'    => 'uploaded',
                     'last_action_at' => gmdate('Y-m-d H:i:s'),
                     'updated_at'     => gmdate('Y-m-d H:i:s'),
@@ -336,6 +415,76 @@ class WorkspaceController extends BaseController
         }
 
         return $this->uploadResult($successful, $errors);
+    }
+
+    public function updateAutomaticWatermark()
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+
+        $actor = session()->get();
+        if (! RolePolicy::isCreativeAdmin($actor)) {
+            return $this->automaticWatermarkResult(false, 'Only Creative Administrators can change automatic watermarking.', 403);
+        }
+
+        $db = db_connect();
+        if (! $db->tableExists('watermark_settings')) {
+            return $this->automaticWatermarkResult(false, 'Watermark settings are not installed yet.', 404);
+        }
+
+        $enabled = $this->request->getPost('enabled') === '1' ? 1 : 0;
+        $existing = $db->table('watermark_settings')->orderBy('id', 'ASC')->get(1)->getRowArray();
+        if ($existing === null) {
+            $db->table('watermark_settings')->insert([
+                'id' => 1,
+                'enabled' => $enabled,
+                'logo_path' => 'FU',
+                'position' => 'bottom_right',
+                'opacity' => 65,
+                'resize_percent' => 100,
+                'updated_by' => (string) ($actor['employee_id'] ?? ''),
+            ]);
+            $settingsId = (int) $db->insertID();
+        } else {
+            $settingsId = (int) $existing['id'];
+            $db->table('watermark_settings')->where('id', $settingsId)->update([
+                'enabled' => $enabled,
+                'updated_by' => (string) ($actor['employee_id'] ?? ''),
+            ]);
+        }
+
+        $state = $enabled === 1 ? 'enabled' : 'disabled';
+        service('audit')->record($actor, $this->request, 'watermark', 'WATERMARK_AUTO_TOGGLE', 'settings', $settingsId, 'Automatic watermarking ' . $state . ' from File Management.');
+
+        return $this->automaticWatermarkResult(true, 'Automatic watermarking is now ' . $state . '.', 200, $enabled === 1);
+    }
+
+    private function automaticWatermarkResult(bool $ok, string $message, int $status, ?bool $enabled = null)
+    {
+        if ($this->request->isAJAX()) {
+            return $this->response->setStatusCode($status)->setJSON([
+                'ok' => $ok,
+                'message' => $message,
+                'enabled' => $enabled,
+                'csrfToken' => csrf_hash(),
+            ]);
+        }
+
+        return redirect()->to(site_url('workspace/file-management'))->with($ok ? 'success' : 'error', $message);
+    }
+
+    private function duplicateCandidates(string $uploadBatchId, string $duplicateScope): FileModel
+    {
+        $files = (new FileModel())->where('is_deleted', 0);
+        if ($duplicateScope === 'upload_batch') {
+            return $files->where('upload_batch_id', $uploadBatchId);
+        }
+
+        return $files->groupStart()
+            ->where('upload_batch_id !=', $uploadBatchId)
+            ->orWhere('upload_batch_id IS NULL', null, false)
+            ->groupEnd();
     }
 
     public function downloads()
@@ -437,6 +586,117 @@ class WorkspaceController extends BaseController
         return view('workspace/duplicates', $this->pageData('duplicates', 'Duplicate Queue', ['duplicates' => $duplicates, 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]));
     }
 
+    public function duplicatePreview(int $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) return $redirect;
+        if (! RolePolicy::allows(session()->get(), 'duplicates.view')) {
+            return $this->response->setStatusCode(403)->setBody('Duplicate previews are restricted to Creative Staff.');
+        }
+        $duplicate = $this->duplicateFile($id);
+        if ($duplicate === null) return $this->response->setStatusCode(404)->setBody('Duplicate media not found.');
+        try {
+            $path = service('storage')->resolveDatabaseFile((string) $duplicate['filepath']);
+        } catch (RuntimeException) {
+            return $this->response->setStatusCode(404)->setBody('Duplicate media not found.');
+        }
+        $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
+        if (! is_string($mimeType) || ! in_array($mimeType, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'], true)) {
+            return $this->response->setStatusCode(415)->setBody('Preview is unavailable for this file type.');
+        }
+
+        return $this->inlineMediaResponse($path, $mimeType);
+    }
+
+    public function duplicateDownload(int $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) return $redirect;
+        if (! RolePolicy::allows(session()->get(), 'duplicates.view')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Duplicate downloads are restricted to Creative Staff.');
+        }
+        $duplicate = $this->duplicateFile($id);
+        if ($duplicate === null) return redirect()->to(site_url('workspace/file-management'))->with('error', 'The duplicate file is unavailable.');
+        try {
+            $path = service('storage')->resolveDatabaseFile((string) $duplicate['filepath']);
+        } catch (RuntimeException) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'The duplicate file is unavailable.');
+        }
+
+        return $this->response->download($path, null)->setFileName((string) $duplicate['filename']);
+    }
+
+    public function restoreDuplicates()
+    {
+        if (($redirect = $this->requireLogin()) !== null) return $redirect;
+        $actor = session()->get();
+        if (! RolePolicy::allows($actor, 'duplicates.view') || ! RolePolicy::allows($actor, 'files.manage')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Restoring duplicate copies is restricted to Creative Staff.');
+        }
+
+        $duplicateIds = $this->selectedIds('duplicate_ids');
+        if ($duplicateIds === []) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Select at least one duplicate copy to restore.');
+        }
+
+        $db = db_connect();
+        $duplicates = $db->table('duplicate_media')
+            ->whereIn('id', $duplicateIds)
+            ->where('status', 'pending')
+            ->get()
+            ->getResultArray();
+        $restored = 0;
+        $failed = count($duplicateIds) - count($duplicates);
+        $restoredFileIds = [];
+
+        foreach ($duplicates as $duplicate) {
+            $original = (new FileModel())->where('is_deleted', 0)->find((int) $duplicate['original_file_id']);
+            try {
+                service('storage')->resolveDatabaseFile((string) $duplicate['filepath']);
+            } catch (RuntimeException) {
+                $original = null;
+            }
+            if ($original === null) {
+                ++$failed;
+                continue;
+            }
+
+            $now = gmdate('Y-m-d H:i:s');
+            $db->transStart();
+            $restoredId = (new FileModel())->insert($this->duplicateRestorePayload($duplicate, $original, $actor, $now), true);
+            if ($restoredId === false) {
+                $db->transRollback();
+                $db->resetTransStatus();
+                ++$failed;
+                continue;
+            }
+            $db->table('duplicate_media')->where('id', (int) $duplicate['id'])->where('status', 'pending')->update(['status' => 'restored']);
+            (new FileModel())->update((int) $original['id'], ['duplicate_count' => max(0, (int) ($original['duplicate_count'] ?? 0) - 1)]);
+            $db->transComplete();
+            if (! $db->transStatus()) {
+                $db->resetTransStatus();
+                ++$failed;
+                continue;
+            }
+
+            $restoredFileIds[] = (int) $restoredId;
+            ++$restored;
+            service('audit')->record($actor, $this->request, 'upload', 'DUPLICATE_RESTORED', 'file', (int) $restoredId, 'Restored duplicate copy "' . (string) $duplicate['filename'] . '" to the active media library.');
+        }
+
+        foreach ($restoredFileIds as $restoredFileId) {
+            $this->runPostUploadAutomation($restoredFileId, $actor);
+        }
+
+        if ($restored === 0) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'The selected duplicate copies could not be restored.');
+        }
+        $message = $restored . ' duplicate cop' . ($restored === 1 ? 'y was' : 'ies were') . ' restored to File Management.';
+        if ($failed > 0) {
+            $message .= ' ' . $failed . ' selected cop' . ($failed === 1 ? 'y was' : 'ies were') . ' unavailable.';
+        }
+
+        return redirect()->to(site_url('workspace/file-management'))->with('success', $message);
+    }
+
     public function createFolder()
     {
         if (($redirect = $this->requireLogin()) !== null) {
@@ -461,7 +721,7 @@ class WorkspaceController extends BaseController
             if ($parentId === false || ($parentId !== null && $parentId < 1)) {
                 throw new RuntimeException('Choose a valid parent folder.');
             }
-            $parentFolder = $parentId === null ? null : (new FolderModel())->find((int) $parentId);
+            $parentFolder = $parentId === null ? null : (new FolderModel())->where('is_deleted', 0)->find((int) $parentId);
             if ($parentId !== null && $parentFolder === null) {
                 throw new RuntimeException('The parent folder is unavailable.');
             }
@@ -469,7 +729,7 @@ class WorkspaceController extends BaseController
             if (str_contains($name, '/')) {
                 throw new RuntimeException('A folder name cannot contain subfolders.');
             }
-            $duplicateQuery = (new FolderModel())->where('name', $name);
+            $duplicateQuery = (new FolderModel())->where('is_deleted', 0)->where('name', $name);
             $parentId === null ? $duplicateQuery->where('parent_id IS NULL', null, false) : $duplicateQuery->where('parent_id', $parentId);
             if ($duplicateQuery->first() !== null) {
                 throw new RuntimeException('A folder with that name already exists.');
@@ -524,7 +784,7 @@ class WorkspaceController extends BaseController
         }
 
         $folderModel = new FolderModel();
-        $folder = $folderModel->find($id);
+        $folder = $folderModel->where('is_deleted', 0)->find($id);
         if ($folder === null) {
             return redirect()->to(site_url('workspace/file-management'))->with('error', 'The requested folder is unavailable.');
         }
@@ -544,7 +804,7 @@ class WorkspaceController extends BaseController
             if ($newName === $oldName) {
                 return redirect()->to(site_url('workspace/file-management?folder=' . $id))->with('success', 'The folder name is unchanged.');
             }
-            $duplicateQuery = $folderModel->where('name', $newName)->where('id !=', $id);
+            $duplicateQuery = $folderModel->where('is_deleted', 0)->where('name', $newName)->where('id !=', $id);
             empty($folder['parent_id']) ? $duplicateQuery->where('parent_id IS NULL', null, false) : $duplicateQuery->where('parent_id', (int) $folder['parent_id']);
             $duplicate = $duplicateQuery->first();
             if ($duplicate !== null) {
@@ -552,7 +812,7 @@ class WorkspaceController extends BaseController
             }
 
             $oldRelative = $this->folderStoragePath($folder);
-            $parentFolder = empty($folder['parent_id']) ? null : $folderModel->find((int) $folder['parent_id']);
+            $parentFolder = empty($folder['parent_id']) ? null : $folderModel->where('is_deleted', 0)->find((int) $folder['parent_id']);
             $parentPath = $parentFolder === null ? '' : $this->folderStoragePath($parentFolder);
             $newRelative = trim($parentPath . '/' . $newName, '/');
             try {
@@ -579,7 +839,7 @@ class WorkspaceController extends BaseController
 
             $db = db_connect();
             $files = (new FileModel())->findAll();
-            $descendantFolders = $folderModel->like('path', $oldRelative . '/', 'after')->findAll();
+            $descendantFolders = $folderModel->where('is_deleted', 0)->like('path', $oldRelative . '/', 'after')->findAll();
             $db->transStart();
             $folderModel->update($id, ['name' => $newName, 'path' => $newRelative]);
             foreach ($descendantFolders as $descendant) {
@@ -631,7 +891,7 @@ class WorkspaceController extends BaseController
         }
 
         $folderModel = new FolderModel();
-        $folder = $folderModel->find($id);
+        $folder = $folderModel->where('is_deleted', 0)->find($id);
         if ($folder === null) {
             return redirect()->to(site_url('workspace/file-management'))->with('error', 'The requested folder is unavailable.');
         }
@@ -643,14 +903,20 @@ class WorkspaceController extends BaseController
             $db->transStart();
             foreach ($files as $file) {
                 $fileId = (int) $file['id'];
-                (new FileModel())->update($fileId, ['folder_id' => null, 'is_deleted' => 1, 'last_action' => 'moved_to_trash', 'last_action_at' => $now]);
+                (new FileModel())->update($fileId, ['is_deleted' => 1, 'last_action' => 'moved_to_trash', 'last_action_at' => $now]);
                 if ($db->table('trashfiles')->where('file_id', $fileId)->countAllResults() === 0) {
-                    $db->table('trashfiles')->insert(['file_id' => $fileId, 'deleted_by' => (int) $actor['employee_id'], 'reason' => 'Moved to Trash when folder "' . $folder['name'] . '" was deleted']);
+                    $db->table('trashfiles')->insert(['file_id' => $fileId, 'folder_root_id' => $id, 'deleted_at' => $now, 'deleted_by' => (int) $actor['employee_id'], 'reason' => 'Moved to Trash when folder "' . $folder['name'] . '" was deleted']);
+                } else {
+                    $db->table('trashfiles')->where('file_id', $fileId)->update(['folder_root_id' => $id, 'deleted_at' => $now, 'deleted_by' => (int) $actor['employee_id'], 'reason' => 'Moved to Trash when folder "' . $folder['name'] . '" was deleted']);
                 }
             }
-            // Previously trashed files must also restore to the root after their folder is removed.
-            $db->table('files')->whereIn('folder_id', $folderIds)->where('is_deleted', 1)->update(['folder_id' => null]);
-            $db->table('folder')->whereIn('id', $folderIds)->delete();
+            $db->table('folder')->whereIn('id', $folderIds)->update([
+                'is_deleted' => 1,
+                'deleted_at' => $now,
+                'deleted_by' => (int) $actor['employee_id'],
+                'deletion_reason' => 'Moved to Trash through File Management',
+                'trash_root_id' => $id,
+            ]);
             $db->transComplete();
             if (! $db->transStatus()) {
                 throw new RuntimeException('The folder could not be deleted.');
@@ -664,7 +930,7 @@ class WorkspaceController extends BaseController
         }
         service('audit')->record($actor, $this->request, 'folder', 'DELETE', 'folder', $id, 'Deleted folder tree "' . $folder['name'] . '" and moved ' . count($files) . ' active file(s) to Trash.');
 
-        return redirect()->to(site_url('workspace/file-management'))->with('success', 'Folder "' . $folder['name'] . '" deleted. ' . count($files) . ' file(s) were moved to Trash and can be restored.');
+        return redirect()->to(site_url('workspace/file-management'))->with('success', 'Folder "' . $folder['name'] . '" moved to Trash with ' . count($files) . ' file(s).');
     }
 
     public function download(int $id)
@@ -875,6 +1141,9 @@ class WorkspaceController extends BaseController
         if ($file === null) {
             return redirect()->to(site_url('workspace/trash'))->with('error', 'The requested media file is not in Trash.');
         }
+        if (db_connect()->table('trashfiles')->where('file_id', $id)->where('folder_root_id IS NOT NULL', null, false)->countAllResults() > 0) {
+            return redirect()->to(site_url('workspace/trash'))->with('error', 'This file belongs to a deleted folder. Select and restore the folder instead.');
+        }
 
         try {
             $db = db_connect();
@@ -915,6 +1184,9 @@ class WorkspaceController extends BaseController
         if ($file === null) {
             return redirect()->to(site_url('workspace/trash'))->with('error', 'The requested media file is not in Trash.');
         }
+        if (db_connect()->table('trashfiles')->where('file_id', $id)->where('folder_root_id IS NOT NULL', null, false)->countAllResults() > 0) {
+            return redirect()->to(site_url('workspace/trash'))->with('error', 'This file belongs to a deleted folder. Select and delete the folder instead.');
+        }
 
         try {
             $this->trashService()->permanentlyRemoveMedia($file, $actor, 'PERMANENT_DELETE', $this->request);
@@ -939,38 +1211,60 @@ class WorkspaceController extends BaseController
         }
 
         $ids = $this->selectedFileIds();
-        if ($ids === []) {
+        $folderIds = $this->selectedFolderIds();
+        if ($ids === [] && $folderIds === []) {
             return redirect()->to(site_url('workspace/trash'))->with('error', 'Select one or more Trash items first.');
         }
-        if (count($ids) > 500) {
+        if (count($ids) + count($folderIds) > 500) {
             return redirect()->to(site_url('workspace/trash'))->with('error', 'Select no more than 500 Trash items at one time.');
         }
 
         $filesById = [];
-        foreach ((new FileModel())->where('is_deleted', 1)->whereIn('id', $ids)->findAll() as $file) {
-            $filesById[(int) $file['id']] = $file;
+        if ($ids !== []) {
+            foreach (db_connect()->table('files f')->select('f.*')->join('trashfiles tf', 'tf.file_id = f.id', 'inner')->where('f.is_deleted', 1)->where('tf.folder_root_id IS NULL', null, false)->whereIn('f.id', $ids)->get()->getResultArray() as $file) {
+                $filesById[(int) $file['id']] = $file;
+            }
+        }
+        $foldersById = [];
+        if ($folderIds !== []) {
+            foreach (db_connect()->table('folder')->where('is_deleted', 1)->where('trash_root_id = id', null, false)->whereIn('id', $folderIds)->get()->getResultArray() as $folder) {
+                $foldersById[(int) $folder['id']] = $folder;
+            }
         }
 
         $restored = 0;
-        $errors   = 0;
+        $errors   = [];
         foreach ($ids as $id) {
             $file = $filesById[$id] ?? null;
             if ($file === null) {
-                $errors++;
+                $errors[] = 'A selected file is no longer available in Trash.';
                 continue;
             }
 
             try {
                 $this->restoreTrashedMedia($file, $actor, 'BULK_RESTORE');
                 $restored++;
-            } catch (\Throwable) {
-                $errors++;
+            } catch (\Throwable $exception) {
+                $errors[] = MediaTitle::forFile($file) . ': ' . ($exception->getMessage() ?: 'The file could not be restored.');
+            }
+        }
+        foreach ($folderIds as $folderId) {
+            $folder = $foldersById[$folderId] ?? null;
+            if ($folder === null) {
+                $errors[] = 'A selected folder is no longer available in Trash.';
+                continue;
+            }
+            try {
+                $this->trashService()->restoreFolderTree($folder, $actor, 'BULK_FOLDER_RESTORE', $this->request);
+                $restored++;
+            } catch (\Throwable $exception) {
+                $errors[] = (string) $folder['name'] . ': ' . ($exception->getMessage() ?: 'The folder could not be restored.');
             }
         }
 
-        $message = $restored . ' file' . ($restored === 1 ? '' : 's') . ' restored.';
-        if ($errors > 0) {
-            $message .= ' ' . $errors . ' selected item' . ($errors === 1 ? '' : 's') . ' could not be restored.';
+        $message = $restored . ' Trash item' . ($restored === 1 ? '' : 's') . ' restored.';
+        if ($errors !== []) {
+            $message .= ' ' . count($errors) . ' selected item' . (count($errors) === 1 ? '' : 's') . ' could not be restored. ' . implode(' ', array_slice($errors, 0, 2));
         }
 
         return redirect()->to(site_url('workspace/trash'))->with($restored > 0 ? 'success' : 'error', $message);
@@ -988,38 +1282,60 @@ class WorkspaceController extends BaseController
         }
 
         $ids = $this->selectedFileIds();
-        if ($ids === []) {
+        $folderIds = $this->selectedFolderIds();
+        if ($ids === [] && $folderIds === []) {
             return redirect()->to(site_url('workspace/trash'))->with('error', 'Select one or more Trash items first.');
         }
-        if (count($ids) > 500) {
+        if (count($ids) + count($folderIds) > 500) {
             return redirect()->to(site_url('workspace/trash'))->with('error', 'Select no more than 500 Trash items at one time.');
         }
 
         $filesById = [];
-        foreach ((new FileModel())->where('is_deleted', 1)->whereIn('id', $ids)->findAll() as $file) {
-            $filesById[(int) $file['id']] = $file;
+        if ($ids !== []) {
+            foreach (db_connect()->table('files f')->select('f.*')->join('trashfiles tf', 'tf.file_id = f.id', 'inner')->where('f.is_deleted', 1)->where('tf.folder_root_id IS NULL', null, false)->whereIn('f.id', $ids)->get()->getResultArray() as $file) {
+                $filesById[(int) $file['id']] = $file;
+            }
+        }
+        $foldersById = [];
+        if ($folderIds !== []) {
+            foreach (db_connect()->table('folder')->where('is_deleted', 1)->where('trash_root_id = id', null, false)->whereIn('id', $folderIds)->get()->getResultArray() as $folder) {
+                $foldersById[(int) $folder['id']] = $folder;
+            }
         }
 
         $deleted = 0;
-        $errors  = 0;
+        $errors  = [];
         foreach ($ids as $id) {
             $file = $filesById[$id] ?? null;
             if ($file === null) {
-                $errors++;
+                $errors[] = 'A selected file is no longer available in Trash.';
                 continue;
             }
 
             try {
                 $this->trashService()->permanentlyRemoveMedia($file, $actor, 'BULK_PERMANENT_DELETE', $this->request);
                 $deleted++;
-            } catch (\Throwable) {
-                $errors++;
+            } catch (\Throwable $exception) {
+                $errors[] = MediaTitle::forFile($file) . ': ' . ($exception->getMessage() ?: 'The file could not be permanently deleted.');
+            }
+        }
+        foreach ($folderIds as $folderId) {
+            $folder = $foldersById[$folderId] ?? null;
+            if ($folder === null) {
+                $errors[] = 'A selected folder is no longer available in Trash.';
+                continue;
+            }
+            try {
+                $this->trashService()->permanentlyRemoveFolder($folder, $actor, 'BULK_FOLDER_PERMANENT_DELETE', $this->request);
+                $deleted++;
+            } catch (\Throwable $exception) {
+                $errors[] = (string) $folder['name'] . ': ' . ($exception->getMessage() ?: 'The folder could not be permanently deleted.');
             }
         }
 
-        $message = $deleted . ' file' . ($deleted === 1 ? '' : 's') . ' permanently deleted.';
-        if ($errors > 0) {
-            $message .= ' ' . $errors . ' selected item' . ($errors === 1 ? '' : 's') . ' could not be deleted.';
+        $message = $deleted . ' Trash item' . ($deleted === 1 ? '' : 's') . ' permanently deleted.';
+        if ($errors !== []) {
+            $message .= ' ' . count($errors) . ' selected item' . (count($errors) === 1 ? '' : 's') . ' could not be deleted. ' . implode(' ', array_slice($errors, 0, 2));
         }
 
         return redirect()->to(site_url('workspace/trash'))->with($deleted > 0 ? 'success' : 'error', $message);
@@ -1346,17 +1662,32 @@ class WorkspaceController extends BaseController
         $db = db_connect();
         $query = trim(mb_substr((string) $this->request->getGet('q'), 0, 120));
         $type = trim(mb_substr((string) $this->request->getGet('type'), 0, 30));
-        $fileTypes = $db->table('files')->select('filetype')->where('is_deleted', 1)->where('filetype !=', '')->distinct()->orderBy('filetype', 'ASC')->get()->getResultArray();
+        $fileTypes = $db->table('files f')->select('f.filetype')->join('trashfiles tf', 'tf.file_id = f.id', 'inner')->where('f.is_deleted', 1)->where('tf.folder_root_id IS NULL', null, false)->where('f.filetype !=', '')->distinct()->orderBy('f.filetype', 'ASC')->get()->getResultArray();
         $validTypes = array_map(static fn (array $row): string => (string) $row['filetype'], $fileTypes);
         if ($type !== '' && ! in_array($type, $validTypes, true)) {
             $type = '';
         }
 
+        $folders = [];
+        if ($type === '') {
+            $folderQuery = $db->table('folder fo')
+                ->select('fo.id, fo.name, fo.description, fo.path, fo.deleted_at, fo.deletion_reason AS reason, u.name AS deleted_by_name, (SELECT COUNT(*) FROM folder child WHERE child.is_deleted = 1 AND child.trash_root_id = fo.id AND child.id != fo.id) AS subfolder_count, (SELECT COUNT(*) FROM trashfiles tf2 INNER JOIN files f2 ON f2.id = tf2.file_id AND f2.is_deleted = 1 WHERE tf2.folder_root_id = fo.id) AS file_count, (SELECT COALESCE(SUM(f3.size), 0) FROM trashfiles tf3 INNER JOIN files f3 ON f3.id = tf3.file_id AND f3.is_deleted = 1 WHERE tf3.folder_root_id = fo.id) AS size', false)
+                ->join('user u', 'u.employee_id = fo.deleted_by', 'left')
+                ->where('fo.is_deleted', 1)
+                ->where('fo.trash_root_id = fo.id', null, false);
+            if ($query !== '') {
+                $folderQuery->groupStart()->like('fo.name', $query)->orLike('fo.deletion_reason', $query)->orLike('u.name', $query)->groupEnd();
+            }
+            $folders = $folderQuery->orderBy('fo.deleted_at', 'DESC')->limit(100)->get()->getResultArray();
+            $folders = $this->trashService()->withRetention($folders);
+        }
+
         $trashQuery = $db->table('files f')
             ->select('f.id, f.display_title, f.filename, f.filetype, f.size, f.dateupload, f.last_action_at, tf.deleted_at, tf.reason, u.name AS deleted_by_name')
-            ->join('trashfiles tf', 'tf.file_id = f.id', 'left')
+            ->join('trashfiles tf', 'tf.file_id = f.id', 'inner')
             ->join('user u', 'u.employee_id = tf.deleted_by', 'left')
-            ->where('f.is_deleted', 1);
+            ->where('f.is_deleted', 1)
+            ->where('tf.folder_root_id IS NULL', null, false);
         if ($query !== '') {
             $trashQuery->groupStart()->like('f.display_title', $query)->orLike('tf.reason', $query)->orLike('u.name', $query)->groupEnd();
         }
@@ -1373,6 +1704,7 @@ class WorkspaceController extends BaseController
 
         return view('workspace/trash', $this->pageData('trash', 'Trash', [
             'files'         => $files,
+            'folders'       => $folders,
             'retentionDays' => self::TRASH_RETENTION_DAYS,
             'purgedCount'   => $purgedCount,
             'query'         => $query,
@@ -1380,6 +1712,77 @@ class WorkspaceController extends BaseController
             'fileTypes'     => $fileTypes,
             'success'       => session()->getFlashdata('success'),
             'error'         => session()->getFlashdata('error'),
+        ]));
+    }
+
+    public function trashFolder(int $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+        $actor = session()->get();
+        if (! RolePolicy::allows($actor, 'files.manage')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Trash is restricted to Creative Staff.');
+        }
+
+        $db = db_connect();
+        $folder = $db->table('folder')->where('id', $id)->where('is_deleted', 1)->get()->getRowArray();
+        if ($folder === null || empty($folder['trash_root_id'])) {
+            return redirect()->to(site_url('workspace/trash'))->with('error', 'The requested deleted folder is unavailable.');
+        }
+        $rootId = (int) $folder['trash_root_id'];
+        $tree = $db->table('folder')->where('is_deleted', 1)->where('trash_root_id', $rootId)->orderBy('id', 'ASC')->get()->getResultArray();
+        $folderById = [];
+        foreach ($tree as $treeFolder) {
+            $folderById[(int) $treeFolder['id']] = $treeFolder;
+        }
+        $rootFolder = $folderById[$rootId] ?? null;
+        if ($rootFolder === null) {
+            return redirect()->to(site_url('workspace/trash'))->with('error', 'The deleted folder root is unavailable.');
+        }
+
+        $breadcrumbs = [];
+        $cursor = $folder;
+        $visited = [];
+        while ($cursor !== null && ! isset($visited[(int) $cursor['id']])) {
+            $visited[(int) $cursor['id']] = true;
+            array_unshift($breadcrumbs, $cursor);
+            if ((int) $cursor['id'] === $rootId) {
+                break;
+            }
+            $cursor = empty($cursor['parent_id']) ? null : ($folderById[(int) $cursor['parent_id']] ?? null);
+        }
+
+        $children = array_values(array_filter($tree, static fn (array $item): bool => (int) ($item['parent_id'] ?? 0) === $id));
+        usort($children, static fn (array $left, array $right): int => strcasecmp((string) $left['name'], (string) $right['name']));
+        $files = $db->table('files f')
+            ->select('f.id, f.display_title, f.filename, f.filetype, f.mime_type, f.size, f.dateupload, f.last_action_at, tf.deleted_at, tf.reason')
+            ->join('trashfiles tf', 'tf.file_id = f.id', 'inner')
+            ->where('f.is_deleted', 1)
+            ->where('f.folder_id', $id)
+            ->where('tf.folder_root_id', $rootId)
+            ->orderBy('f.display_title', 'ASC')
+            ->get()
+            ->getResultArray();
+        $summary = $db->table('trashfiles tf')
+            ->select('COUNT(*) AS file_count, COALESCE(SUM(f.size), 0) AS size', false)
+            ->join('files f', 'f.id = tf.file_id AND f.is_deleted = 1', 'inner')
+            ->where('tf.folder_root_id', $rootId)
+            ->get()
+            ->getRowArray() ?? ['file_count' => 0, 'size' => 0];
+        $rootFolder = $this->trashService()->withRetention([$rootFolder])[0];
+
+        return view('workspace/trash_folder', $this->pageData('trash', 'Trash - ' . (string) $folder['name'], [
+            'folder' => $folder,
+            'rootFolder' => $rootFolder,
+            'breadcrumbs' => $breadcrumbs,
+            'children' => $children,
+            'files' => $files,
+            'summary' => $summary,
+            'canRestore' => $this->canRestoreTrash($actor),
+            'canPermanentDelete' => $this->canPermanentlyDeleteTrash($actor),
+            'success' => session()->getFlashdata('success'),
+            'error' => session()->getFlashdata('error'),
         ]));
     }
 
@@ -1468,7 +1871,7 @@ class WorkspaceController extends BaseController
     /** @param array<string, mixed> $actor */
     private function canPermanentlyDeleteTrash(array $actor): bool
     {
-        return RolePolicy::isSuperAdmin($actor);
+        return RolePolicy::allows($actor, 'files.delete_permanently');
     }
 
     /** @param array<string, mixed> $file @param array<string, mixed> $actor */
@@ -1512,10 +1915,132 @@ class WorkspaceController extends BaseController
         return new TrashService();
     }
 
+    /** @return list<array{original:array<string,mixed>,duplicates:list<array<string,mixed>>,similarity:float}> */
+    private function duplicateGroups(): array
+    {
+        $db = db_connect();
+        if (! $db->tableExists('duplicate_media')) return [];
+
+        $duplicateFields = $db->getFieldNames('duplicate_media');
+        $similaritySelect = in_array('similarity_score', $duplicateFields, true) ? 'd.similarity_score' : '100 AS similarity_score';
+        $matchTypeSelect = in_array('match_type', $duplicateFields, true) ? 'd.match_type' : "'exact' AS match_type";
+        $detectionScopeSelect = in_array('detection_scope', $duplicateFields, true) ? 'd.detection_scope' : "'media_library' AS detection_scope";
+        $rows = $db->table('duplicate_media d')
+            ->select('d.id, d.original_file_id, d.filename, d.display_title, d.filepath, d.mime_type, d.size, d.status, d.created_at, ' . $similaritySelect . ', ' . $matchTypeSelect . ', ' . $detectionScopeSelect . ', f.display_title AS original_display_title, f.filename AS original_filename, f.filetype AS original_filetype, f.mime_type AS original_mime_type, f.size AS original_size, f.dateupload AS original_dateupload, u.name AS uploader_name', false)
+            ->join('files f', 'f.id = d.original_file_id', 'inner')
+            ->join('user u', 'u.employee_id = d.uploaded_by', 'left')
+            ->where('d.status', 'pending')
+            ->where('f.is_deleted', 0)
+            ->orderBy('d.original_file_id', 'ASC')
+            ->orderBy('d.created_at', 'DESC')
+            ->limit(500)
+            ->get()
+            ->getResultArray();
+
+        $watermarkedIds = [];
+        if ($db->tableExists('file_watermarks')) {
+            $originalIds = array_values(array_unique(array_map('intval', array_column($rows, 'original_file_id'))));
+            if ($originalIds !== []) {
+                $watermarkedIds = array_fill_keys(array_map('intval', array_column($db->table('file_watermarks')->select('media_id')->whereIn('media_id', $originalIds)->get()->getResultArray(), 'media_id')), true);
+            }
+        }
+
+        $groups = [];
+        foreach ($rows as $row) {
+            $originalId = (int) $row['original_file_id'];
+            if (! isset($groups[$originalId])) {
+                $groups[$originalId] = [
+                    'original' => [
+                        'id' => $originalId,
+                        'display_title' => (string) ($row['original_display_title'] ?: pathinfo((string) $row['original_filename'], PATHINFO_FILENAME)),
+                        'filename' => (string) $row['original_filename'],
+                        'filetype' => (string) $row['original_filetype'],
+                        'mime_type' => (string) $row['original_mime_type'],
+                        'size' => (int) $row['original_size'],
+                        'dateupload' => (string) $row['original_dateupload'],
+                        'watermarked' => isset($watermarkedIds[$originalId]),
+                    ],
+                    'duplicates' => [],
+                    'similarity' => 100.0,
+                ];
+            }
+            $duplicate = [
+                'id' => (int) $row['id'],
+                'display_title' => (string) ($row['display_title'] ?: pathinfo((string) $row['filename'], PATHINFO_FILENAME)),
+                'filename' => (string) $row['filename'],
+                'mime_type' => (string) $row['mime_type'],
+                'size' => (int) $row['size'],
+                'status' => (string) $row['status'],
+                'created_at' => (string) $row['created_at'],
+                'uploader_name' => (string) ($row['uploader_name'] ?? ''),
+                'match_type' => (string) $row['match_type'],
+                'similarity_score' => (float) $row['similarity_score'],
+                'detection_scope' => (string) $row['detection_scope'],
+            ];
+            $groups[$originalId]['duplicates'][] = $duplicate;
+            $groups[$originalId]['similarity'] = min((float) $groups[$originalId]['similarity'], (float) $duplicate['similarity_score']);
+        }
+
+        return array_values($groups);
+    }
+
+    /** @return array<string,mixed>|null */
+    private function duplicateFile(int $id): ?array
+    {
+        if ($id < 1 || ! db_connect()->tableExists('duplicate_media')) return null;
+
+        return db_connect()->table('duplicate_media')->where('id', $id)->where('status', 'pending')->get()->getRowArray();
+    }
+
+    /** @param array<string,mixed> $duplicate @param array<string,mixed> $original @param array<string,mixed> $actor @return array<string,mixed> */
+    private function duplicateRestorePayload(array $duplicate, array $original, array $actor, string $now): array
+    {
+        return [
+            'filename' => (string) $duplicate['filename'],
+            'display_title' => trim((string) ($duplicate['display_title'] ?? '')) ?: pathinfo((string) $duplicate['filename'], PATHINFO_FILENAME),
+            'filepath' => (string) $duplicate['filepath'],
+            'filetype' => strtolower((string) pathinfo((string) $duplicate['filename'], PATHINFO_EXTENSION)),
+            'mime_type' => (string) ($duplicate['mime_type'] ?? ''),
+            'media_kind' => $this->mediaKindForMimeType((string) ($duplicate['mime_type'] ?? '')),
+            'size' => (int) ($duplicate['size'] ?? 0),
+            'dateupload' => (string) ($duplicate['created_at'] ?? $now),
+            'description' => 'Restored from the Duplicate Queue.',
+            'employee_id' => (int) ($duplicate['uploaded_by'] ?? $actor['employee_id']),
+            'folder_id' => empty($original['folder_id']) ? null : (int) $original['folder_id'],
+            'is_deleted' => 0,
+            'downloadable' => 1,
+            'release_status' => 'draft',
+            'featured' => 0,
+            'storage_stage' => 'raw',
+            'distribution_type' => null,
+            'distribution_target' => null,
+            'content_hash' => $duplicate['content_hash'] ?? null,
+            'image_fingerprint' => $duplicate['image_fingerprint'] ?? null,
+            'upload_batch_id' => $duplicate['upload_batch_id'] ?? null,
+            'duplicate_of' => (int) $duplicate['original_file_id'],
+            'duplicate_count' => 0,
+            'last_action' => 'restored',
+            'last_action_at' => $now,
+            'updated_at' => $now,
+        ];
+    }
+
     /** @return list<int> */
     private function selectedFileIds(): array
     {
-        $input = $this->request->getPost('file_ids');
+        return $this->selectedIds('file_ids');
+    }
+
+    /** @return list<int> */
+    private function selectedFolderIds(): array
+    {
+        return $this->selectedIds('folder_ids');
+    }
+
+    /** @return list<int> */
+    private function selectedIds(string $field): array
+    {
+        $input = $this->request->getPost($field);
         if (! is_array($input)) {
             return [];
         }
@@ -1586,17 +2111,75 @@ class WorkspaceController extends BaseController
     {
         $storage = service('storage');
         $base    = $storage->normalizeRelativePath($baseDirectory);
-        if (trim($relativePath) === '') {
+        $folderPath = $this->uploadFolderPath($relativePath);
+        if ($folderPath === '') {
             return $base;
         }
 
-        $clientPath = $storage->normalizeRelativePath($relativePath, false);
-        $folderPath = dirname(str_replace('\\', '/', $clientPath));
-        if ($folderPath === '.') {
-            $folderPath = '';
+        return $storage->normalizeRelativePath(trim($base . '/' . $folderPath, '/'));
+    }
+
+    private function uploadFolderPath(string $relativePath): string
+    {
+        if (trim($relativePath) === '') {
+            return '';
         }
 
-        return $storage->normalizeRelativePath(trim($base . '/' . $folderPath, '/'));
+        $clientPath = str_replace('\\', '/', trim($relativePath));
+        if ($clientPath === '' || str_contains($clientPath, "\0") || str_starts_with($clientPath, '/')) {
+            throw new RuntimeException('The folder path is invalid.');
+        }
+
+        // The final segment is a filename and is validated separately by
+        // StorageService::storeUpload(). Only folder segments belong here.
+        $folderPath = dirname($clientPath);
+        if ($folderPath === '.') {
+            return '';
+        }
+
+        return service('storage')->normalizeRelativePath($folderPath, false);
+    }
+
+    /** @param array<string, mixed>|null $baseFolder */
+    private function ensureUploadFolderHierarchy(?array $baseFolder, string $relativePath): ?int
+    {
+        $folderPath = $this->uploadFolderPath($relativePath);
+        $parentId = $baseFolder === null ? null : (int) $baseFolder['id'];
+        if ($folderPath === '') {
+            return $parentId;
+        }
+
+        $parentPath = $baseFolder === null ? '' : $this->folderStoragePath($baseFolder);
+        foreach (explode('/', $folderPath) as $name) {
+            $path = service('storage')->normalizeRelativePath(trim($parentPath . '/' . $name, '/'), false);
+            $folderQuery = (new FolderModel())
+                ->where('is_deleted', 0)
+                ->where('name', $name);
+            $parentId === null
+                ? $folderQuery->where('parent_id IS NULL', null, false)
+                : $folderQuery->where('parent_id', $parentId);
+            $existing = $folderQuery->first();
+
+            if ($existing === null) {
+                $createdId = (new FolderModel())->insert([
+                    'parent_id'   => $parentId,
+                    'name'        => $name,
+                    'description' => '',
+                    'path'        => $path,
+                    'created_at'  => gmdate('Y-m-d H:i:s'),
+                    'is_deleted'  => 0,
+                ], true);
+                if ($createdId === false) {
+                    throw new RuntimeException('The uploaded folder structure could not be saved.');
+                }
+                $parentId = (int) $createdId;
+            } else {
+                $parentId = (int) $existing['id'];
+            }
+            $parentPath = $path;
+        }
+
+        return $parentId;
     }
 
     private function mediaKindForMimeType(string $mimeType): string
@@ -1643,10 +2226,71 @@ class WorkspaceController extends BaseController
         return implode(' / ', array_filter($parts, static fn (string $part): bool => $part !== ''));
     }
 
+    /** @param list<int> $folderIds @param array<int, array<string, mixed>> $folderById @return list<int> */
+    private function folderIdsWithAncestors(array $folderIds, array $folderById): array
+    {
+        $accessible = [];
+        foreach ($folderIds as $folderId) {
+            $currentId = (int) $folderId;
+            $visited = [];
+            while ($currentId > 0 && isset($folderById[$currentId]) && ! isset($visited[$currentId])) {
+                $visited[$currentId] = true;
+                $accessible[$currentId] = true;
+                $currentId = empty($folderById[$currentId]['parent_id'])
+                    ? 0
+                    : (int) $folderById[$currentId]['parent_id'];
+            }
+        }
+
+        return array_map('intval', array_keys($accessible));
+    }
+
+    /** @param list<array<string,mixed>> $folders @param array<int,array<string,mixed>> $folderById @return list<int> */
+    private function matchingFolderIds(array $folders, array $folderById, string $query): array
+    {
+        $ids = [];
+        foreach ($folders as $folder) {
+            $searchablePath = implode(' ', [
+                (string) ($folder['name'] ?? ''),
+                (string) ($folder['path'] ?? ''),
+                $this->folderDisplayPath($folder, $folderById),
+            ]);
+            if (mb_stripos($searchablePath, $query) !== false) {
+                $ids[] = (int) $folder['id'];
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids, static fn (int $id): bool => $id > 0)));
+    }
+
+    /** @param list<int> $matchingFolderIds */
+    private function applyFileManagementSearch(BaseBuilder $files, string $query, array $matchingFolderIds, bool $searchPassports): BaseBuilder
+    {
+        if ($searchPassports) {
+            $files->join('passports p', 'p.media_id = f.id', 'left');
+        }
+
+        $files->groupStart()
+            ->like('f.filename', $query)
+            ->orLike('f.display_title', $query)
+            ->orLike('f.tags', $query)
+            ->orLike('f.classification', $query)
+            ->orLike('f.detected_objects', $query);
+        if ($searchPassports) {
+            $files->orLike('p.date_taken', $query)->orLike('p.event_name', $query);
+        }
+        if ($matchingFolderIds !== []) {
+            $files->orWhereIn('f.folder_id', $matchingFolderIds);
+        }
+        $files->groupEnd();
+
+        return $files;
+    }
+
     /** @return list<int> */
     private function descendantFolderIds(int $rootId): array
     {
-        $rows = (new FolderModel())->select('id, parent_id')->findAll();
+        $rows = (new FolderModel())->where('is_deleted', 0)->select('id, parent_id')->findAll();
         $ids = [$rootId];
         for ($index = 0; $index < count($ids); ++$index) {
             $parentId = $ids[$index];
@@ -1786,7 +2430,7 @@ class WorkspaceController extends BaseController
         if ($postType === 'folder') {
             $folderId = (int) $this->request->getPost('folder_id');
             $folderModel = new \App\Models\FolderModel();
-            $folder = $folderModel->find($folderId);
+            $folder = $folderModel->where('is_deleted', 0)->find($folderId);
             if (! $folder) {
                 return redirect()->back()->with('error', 'Folder not found.');
             }
@@ -1853,7 +2497,7 @@ class WorkspaceController extends BaseController
 
         $parentFolder = null;
         if ($folderId) {
-            $parentFolder = $folderModel->find((int)$folderId);
+            $parentFolder = $folderModel->where('is_deleted', 0)->find((int)$folderId);
             if (!$parentFolder) {
                 return redirect()->to(site_url('workspace/published-files'))->with('error', 'Folder not found.');
             }
@@ -1875,24 +2519,12 @@ class WorkspaceController extends BaseController
             }
         } else {
             $folders = $folderModel
+                ->where('is_deleted', 0)
                 ->where('publication_channel IS NOT NULL')
                 ->orderBy('published_at', 'DESC')
                 ->findAll();
             $publishedFolderIds = array_map('intval', array_column($folders, 'id'));
-            $filesQuery = $fileModel
-                ->where('is_deleted', 0)
-                ->where('release_status', 'published')
-                ->groupStart()
-                    ->where('folder_id IS NULL', null, false);
-
-            // Files from a published folder are represented by that folder card.
-            // Individually posted files in ordinary folders remain visible here.
-            if ($publishedFolderIds !== []) {
-                $filesQuery->orWhereNotIn('folder_id', $publishedFolderIds);
-            }
-
-            $files = $filesQuery
-                ->groupEnd()
+            $files = $this->publishedStandaloneQuery($fileModel, $publishedFolderIds)
                 ->orderBy('published_at', 'DESC')
                 ->orderBy('dateupload', 'DESC')
                 ->findAll();
@@ -1921,5 +2553,26 @@ class WorkspaceController extends BaseController
             'role' => $actor['role'],
             'canManage' => true,
         ]);
+    }
+
+    /** @param list<int> $publishedFolderIds */
+    private function publishedStandaloneQuery(FileModel $fileModel, array $publishedFolderIds): FileModel
+    {
+        $filesQuery = $fileModel
+            ->where('is_deleted', 0)
+            ->where('release_status', 'published');
+
+        // Files represented by a published folder card are hidden from the
+        // standalone grid. With no folder cards, every published file must be
+        // shown, including files stored inside ordinary folders.
+        if ($publishedFolderIds !== []) {
+            $filesQuery
+                ->groupStart()
+                ->where('folder_id IS NULL', null, false)
+                ->orWhereNotIn('folder_id', $publishedFolderIds)
+                ->groupEnd();
+        }
+
+        return $filesQuery;
     }
 }

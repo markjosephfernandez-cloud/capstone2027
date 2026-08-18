@@ -9,6 +9,14 @@
 (function() {
   "use strict";
 
+  window.GreyhoundMainInit = function() {
+  if (window.GreyhoundMainAbortController) {
+    window.GreyhoundMainAbortController.abort();
+  }
+  const mainAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  window.GreyhoundMainAbortController = mainAbortController;
+  const listenerOptions = mainAbortController ? { signal: mainAbortController.signal } : false;
+
   /**
    * Easy selector helper function
    */
@@ -26,9 +34,9 @@
    */
   const on = (type, el, listener, all = false) => {
     if (all) {
-      select(el, all).forEach(e => e.addEventListener(type, listener))
+      select(el, all).forEach(e => e.addEventListener(type, listener, listenerOptions))
     } else {
-      select(el, all).addEventListener(type, listener)
+      select(el, all).addEventListener(type, listener, listenerOptions)
     }
   }
 
@@ -36,7 +44,7 @@
    * Easy on scroll event listener 
    */
   const onscroll = (el, listener) => {
-    el.addEventListener('scroll', listener)
+    el.addEventListener('scroll', listener, listenerOptions)
   }
 
   /**
@@ -79,8 +87,9 @@
       }
     })
   }
-  window.addEventListener('load', navbarlinksActive)
+  window.addEventListener('load', navbarlinksActive, listenerOptions)
   onscroll(document, navbarlinksActive)
+  navbarlinksActive()
 
   /**
    * Toggle .header-scrolled class to #header when page is scrolled
@@ -94,8 +103,9 @@
         selectHeader.classList.remove('header-scrolled')
       }
     }
-    window.addEventListener('load', headerScrolled)
+    window.addEventListener('load', headerScrolled, listenerOptions)
     onscroll(document, headerScrolled)
+    headerScrolled()
   }
 
   /**
@@ -110,8 +120,9 @@
         backtotop.classList.remove('active')
       }
     }
-    window.addEventListener('load', toggleBacktotop)
+    window.addEventListener('load', toggleBacktotop, listenerOptions)
     onscroll(document, toggleBacktotop)
+    toggleBacktotop()
   }
 
   /**
@@ -327,5 +338,9 @@
       }).observe(mainContainer);
     }, 200);
   }
+
+  };
+
+  window.GreyhoundMainInit();
 
 })();

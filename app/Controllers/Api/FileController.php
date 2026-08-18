@@ -32,7 +32,7 @@ class FileController extends ApiController
             if (mb_strlen($search) > 150) {
                 return $this->error('validation_error', 'Search text may not exceed 150 characters.', 422);
             }
-            $folderIds = array_map('intval', array_column((new FolderModel())->select('id')->like('name', $search)->findAll(), 'id'));
+            $folderIds = array_map('intval', array_column((new FolderModel())->where('is_deleted', 0)->select('id')->like('name', $search)->findAll(), 'id'));
             $query->groupStart()
                 ->like('display_title', $search)
                 ->orLike('tags', $search)
@@ -100,7 +100,7 @@ class FileController extends ApiController
             return $this->error('validation_error', 'Description may not exceed 5,000 characters.', 422);
         }
         $folderId = $this->request->getPost('folder_id');
-        if ($folderId !== null && $folderId !== '' && (filter_var($folderId, FILTER_VALIDATE_INT) === false || (new FolderModel())->find((int) $folderId) === null)) {
+        if ($folderId !== null && $folderId !== '' && (filter_var($folderId, FILTER_VALIDATE_INT) === false || (new FolderModel())->where('is_deleted', 0)->find((int) $folderId) === null)) {
             return $this->error('validation_error', 'Choose a valid destination folder.', 422);
         }
         $folderId = $folderId === null || $folderId === '' ? null : (int) $folderId;
@@ -222,6 +222,9 @@ class FileController extends ApiController
         if (array_key_exists('folder_id', $input)) {
             if ($input['folder_id'] !== null && filter_var($input['folder_id'], FILTER_VALIDATE_INT) === false) {
                 return $this->error('validation_error', 'folder_id must be an integer or null.', 422);
+            }
+            if ($input['folder_id'] !== null && (new FolderModel())->where('is_deleted', 0)->find((int) $input['folder_id']) === null) {
+                return $this->error('validation_error', 'Choose an active destination folder.', 422);
             }
             $changes['folder_id'] = $input['folder_id'] === null ? null : (int) $input['folder_id'];
         }

@@ -21,6 +21,8 @@ class DistributionController extends BaseController
         if (! RolePolicy::allows($actor, 'distribution.manage') && ! RolePolicy::allows($actor, 'requests.manage_own')) {
             return redirect()->to(site_url('workspace/file-management'))->with('error', 'Distribution Workflow is not available for your role.');
         }
+        $focusedRequestId = filter_var($this->request->getGet('request'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $focusedRequestId = $focusedRequestId === false ? null : (int) $focusedRequestId;
         $db = db_connect();
         $requests = $db->table('media_requests r')
             ->select('r.*, requester.name AS requester_name, transmitter.name AS transmitter_name, COUNT(DISTINCT ma.media_id) AS file_count')
@@ -37,17 +39,18 @@ class DistributionController extends BaseController
             $direct->where('ma.department', (string) ($actor['department'] ?? ''));
         }
         $direct = $direct->groupBy('ma.department, ma.sent_by, ma.sent_at, ma.status, u.name')->orderBy('ma.sent_at', 'DESC')->limit(100)->get()->getResultArray();
-        $files = RolePolicy::allows($actor, 'files.assign') ? (new FileModel())->where('is_deleted', 0)->where('storage_stage', 'processed')->orderBy('dateupload', 'DESC')->findAll(500) : [];
+        $files = RolePolicy::allows($actor, 'files.assign') ? (new FileModel())->where('is_deleted', 0)->orderBy('dateupload', 'DESC')->findAll(500) : [];
         $folders = RolePolicy::allows($actor, 'files.assign') ? $db->table('folder fo')
-            ->select('fo.id, fo.parent_id, fo.name, fo.path, COUNT(f.id) AS file_count')
-            ->join('files f', "f.folder_id = fo.id AND f.is_deleted = 0 AND f.storage_stage = 'processed'", 'left')
+            ->select('fo.id, fo.parent_id, fo.name, fo.path, COUNT(DISTINCT f.id) AS file_count, (SELECT COUNT(*) FROM folder child WHERE child.parent_id = fo.id AND child.is_deleted = 0) AS subfolder_count', false)
+            ->join('files f', 'f.folder_id = fo.id AND f.is_deleted = 0', 'left')
+            ->where('fo.is_deleted', 0)
             ->groupBy('fo.id, fo.parent_id, fo.name, fo.path')
             ->orderBy('fo.name', 'ASC')
             ->get()
             ->getResultArray() : [];
         $departments = RolePolicy::allows($actor, 'files.assign') ? $db->table('user')->select('department')->where('department !=', '')->groupBy('department')->orderBy('department')->get()->getResultArray() : [];
         $actions = $db->table('distribution_actions')->orderBy('created_at', 'DESC')->limit(200)->get()->getResultArray();
-        return view('distribution/index', ['user' => $actor, 'activePage' => 'distribution', 'title' => 'Distribution Workflow', 'requests' => $requests, 'requestFiles' => $requestFiles, 'directSends' => $direct, 'files' => $files, 'folders' => $folders, 'departments' => $departments, 'actions' => $actions, 'canManage' => RolePolicy::allows($actor, 'distribution.manage'), 'isDepartment' => $role === 'department', 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]);
+        return view('distribution/index', ['user' => $actor, 'activePage' => 'distribution', 'title' => 'Distribution Workflow', 'requests' => $requests, 'requestFiles' => $requestFiles, 'directSends' => $direct, 'files' => $files, 'folders' => $folders, 'departments' => $departments, 'actions' => $actions, 'canManage' => RolePolicy::allows($actor, 'distribution.manage'), 'isDepartment' => $role === 'department', 'focusedRequestId' => $focusedRequestId, 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]);
     }
 
     public function requestMedia()
@@ -174,7 +177,7 @@ class DistributionController extends BaseController
             return [];
         }
 
-        return array_values(array_map(static fn (array $folder): string => (string) $folder['name'], (new FolderModel())->whereIn('id', $folderIds)->findAll()));
+        return array_values(array_map(static fn (array $folder): string => (string) $folder['name'], (new FolderModel())->where('is_deleted', 0)->whereIn('id', $folderIds)->findAll()));
     }
 
     /** @param list<int> $requestIds @return array<int, list<array<string, mixed>>> */
@@ -215,7 +218,6 @@ class DistributionController extends BaseController
         $rows = (new FileModel())
             ->select('id')
             ->where('is_deleted', 0)
-            ->where('storage_stage', 'processed')
             ->whereIn('folder_id', $folderIds)
             ->findAll();
 
@@ -230,7 +232,7 @@ class DistributionController extends BaseController
             return [];
         }
 
-        $allFolders = (new FolderModel())->findAll();
+        $allFolders = (new FolderModel())->where('is_deleted', 0)->findAll();
         $children = [];
         foreach ($allFolders as $folder) {
             $parent = empty($folder['parent_id']) ? 0 : (int) $folder['parent_id'];
