@@ -94,6 +94,32 @@ body {
   color: #444444;
 }
 
+.min-w-0 {
+  min-width: 0;
+}
+
+.breadcrumb-item,
+.folder-path,
+.deleted-breadcrumb {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pagination {
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: .35rem;
+}
+
+.modal-header > :not(.btn-close) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.modal-header .btn-close {
+  flex-shrink: 0;
+}
+
 a {
   color: #4154f1;
   text-decoration: none;
@@ -1172,6 +1198,9 @@ h6 {
 }
 
 .dashboard .activity .activity-item .activity-content {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding-left: 10px;
   padding-bottom: 20px;
 }
@@ -1666,7 +1695,7 @@ h6 {
 }
 
 .folder-card:hover {
-  transform: translateY(-5px); /* Lift effect on hover */
+  transform: none; /* Keep the folder hit area stable at its bottom edge. */
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); /* Enhanced shadow on hover */
 }
 
@@ -2256,3 +2285,55 @@ tr:hover {
 .file-details {
   font-size: 14px;
 }
+
+.preview-gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .65);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(15, 15, 16, .7);
+  font-size: 1.25rem;
+}
+.preview-gallery-arrow:hover,
+.preview-gallery-arrow:focus-visible {
+  background: rgba(15, 15, 16, .95);
+  border-color: #fff;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.preview-gallery-arrow.previous { left: 12px; }
+.preview-gallery-arrow.next { right: 12px; }
+
+.search-reset-field { position: relative; }
+.search-reset-field input[type="search"] { padding-right: 42px; }
+.input-group.search-reset-field input[type="search"] { border-top-right-radius: .375rem; border-bottom-right-radius: .375rem; }
+.search-reset-field input[type="search"]::-webkit-search-cancel-button { display: none; }
+.search-reset-field .search-reset-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: #42649b;
+  font-size: 24px;
+  line-height: 1;
+  border-radius: 5px;
+  text-decoration: none;
+}
+.search-reset-field .search-reset-clear[hidden] { display: none; }
+.search-reset-field .search-reset-clear:hover,
+.search-reset-field .search-reset-clear:focus-visible { background: #e9efff; outline: 2px solid #86a5ff; }

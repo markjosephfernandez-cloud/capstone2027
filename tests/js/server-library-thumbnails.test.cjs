@@ -1,0 +1,20 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+const fs=require('node:fs');
+test('thumbnail queue caps reads, advances on errors, and stops on navigation',()=>{
+    const imgs=Array.from({length:5},(_,i)=>({isConnected:true,dataset:{serverThumbnail:'image'+i},events:{},addEventListener(n,f){this.events[n]=f;},removeEventListener(n){delete this.events[n];},removeAttribute(){delete this.src;}}));
+    const main={isConnected:true,querySelectorAll:()=>imgs};
+    const window={addEventListener(){},removeEventListener(){}};
+    vm.runInNewContext(fs.readFileSync('public/assets/js/server-library-thumbnails.js','utf8'),{window,document:{readyState:'complete',querySelector:()=>main},MutationObserver:class{observe(){}disconnect(){}}});
+    assert.equal(imgs.filter(i=>i.src).length,2);
+    assert.equal(imgs[0].dataset.thumbnailState,'loading');
+    imgs[0].events.error({target:imgs[0],type:'error'});
+    assert.equal(imgs[0].dataset.thumbnailState,'error');
+    assert.equal(imgs[2].src,'image2');assert.equal(imgs[3].src,undefined);
+    imgs[2].events.load({target:imgs[2],type:'load'});
+    assert.equal(imgs[2].dataset.thumbnailState,'loaded');
+    assert.equal(imgs[3].src,'image3');
+    window.greyhoundThumbnailCleanup();
+    assert.equal(imgs[3].src,undefined);assert.equal(imgs[1].events.load,undefined);
+});

@@ -1,21 +1,79 @@
-README.md
-Greyhound Hub AI Event Classification (ResNet-50)
-Greyhound Hub AI Event Classification
+# Greyhound Hub ConvNeXt event classification
 
-## Running with the CodeIgniter application
+The active inference service loads `convnext_event_classifier.pth` with PyTorch.
+The old Keras/ResNet models are retained as historical training assets and are
+not loaded by `api_server.py`.
 
-The CodeIgniter application sends each uploaded image to this local service at
-`http://127.0.0.1:5001/predict`. Start the AI service before uploading media:
+## Start the service
 
-```powershell
-cd C:\xampp\htdocs\greyhound-admin-2025-final_greyhound_admin_2025\greyhound-hub-2.0
-.\.venv_ai\Scripts\python.exe .\api_server.py
+macOS (existing native Python 3.11 environment):
+
+```bash
+cd greyhound-hub-2.0
+./.venv_ai_mac/bin/python -m pip install -r requirements-inference.txt
+./start-ai-server.sh
 ```
 
-Check that it is ready by opening `http://127.0.0.1:5001/health`. The system
-will automatically save the detected event, confidence score, and class
-probabilities in the media metadata passport. Files below 80% confidence are
-kept as unclassified and marked for review.
+For a new environment, run `python3.11 -m venv .venv_ai_mac` first.
+Linux can use the same commands or set `GREYHOUND_AI_PYTHON` to its virtualenv's Python.
+
+Windows:
+
+```powershell
+cd greyhound-hub-2.0
+.\.venv_ai\Scripts\python.exe -m pip install -r requirements-inference.txt
+.\start-ai-server.bat
+```
+
+Stop the previous AI process before starting the replacement on the same port.
+The launcher rejects a running service that reports the old model version.
+The PHP `.env` setting remains:
+
+```ini
+greyhound.eventModelEndpoint = 'http://127.0.0.1:5001/predict'
+```
+
+Check `http://127.0.0.1:5001/health`: it must report
+`greyhound-hub-2.0-convnext` and eight classes. `POST /predict` accepts a multipart
+`media` image and returns the existing event/confidence/evidence contract.
+
+## Checkpoint and labels
+
+The checkpoint stores a torchvision ConvNeXt Tiny state dict, `classes`, and
+`class_to_idx`. Inference strictly loads all weights and validates the saved
+class order; it never downloads pretrained weights or loads the old model.
+
+| Checkpoint class | Application classification |
+| --- | --- |
+| Digital EXPO | EXPO Activities |
+| Graduation | Graduation Activities |
+| Kasadyaan | Kasadyaan Celebrations |
+| Kasadyaan:Hara | Kasadyaan: Hara |
+| Kasadyaan:Parada | Kasadyaan: Parada |
+| Kasadyaan:Pasundayag | Kasadyaan: Pasundayag |
+| dal-uy | Dal-uy Events |
+| intramurals | Intramurals |
+
+The checkpoint does **not** include its training/validation preprocessing.
+Until the original transform code is provided, inference uses the standard
+[torchvision ConvNeXt Tiny transform](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.convnext_tiny.html):
+RGB, bilinear resize of the shorter edge to 236, center crop to 224, and ImageNet
+normalization. Confirm these settings against training before assessing accuracy.
+`GREYHOUND_AI_RESIZE_SIZE` and `GREYHOUND_AI_CROP_SIZE` can override the sizes.
+
+`GREYHOUND_AI_HOST` (default `127.0.0.1`), `GREYHOUND_AI_PORT` (5001),
+`GREYHOUND_AI_MIN_CONFIDENCE` (80), and `GREYHOUND_AI_THREADS` (2) are optional.
+Below the service threshold, results retain probabilities but have no event and
+require review. The PHP review threshold is 80%. A service outage still allows
+uploads using the separately identified `greyhound-keyword-baseline` with zero
+AI confidence and mandatory review; it does
+not load the old ResNet model. Existing classifications are not rewritten.
+
+## Historical ResNet training documentation
+
+The material below describes the old training assets. `train_model.py` and
+`test_model.py` are legacy TensorFlow utilities; they do not train or test the
+active ConvNeXt checkpoint.
 
 An AI-powered Event Classification System developed for the Greyhound Hub Digital Asset Management System. This project uses ResNet-50 Transfer Learning to automatically classify uploaded media into Foundation University event categories.
 
@@ -524,3 +582,7 @@ Confidence Check
           │
           ▼
 Digital Asset Management Database
+
+## iFound object and expression analysis
+
+The AI service also exposes `/analyze` for local YOLO object detection and DeepFace facial-expression estimates. See [setup, iFound usage, duplicate matching, and custom checkpoints](../docs/ifound-visual-analysis.md).

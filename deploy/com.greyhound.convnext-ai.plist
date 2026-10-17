@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>GREYHOUND_AI_HOST</key>
+		<string>127.0.0.1</string>
+		<key>GREYHOUND_AI_PORT</key>
+		<string>5001</string>
+	</dict>
+	<key>KeepAlive</key>
+	<true/>
+	<key>Label</key>
+	<string>com.greyhound.convnext-ai</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/XAMPP/xamppfiles/htdocs/greyhound-admin-2025-final_greyhound_admin_2025/greyhound-hub-2.0/.venv_ai_mac/bin/python</string>
+		<string>-u</string>
+		<string>/Applications/XAMPP/xamppfiles/htdocs/greyhound-admin-2025-final_greyhound_admin_2025/greyhound-hub-2.0/api_server.py</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Applications/XAMPP/xamppfiles/htdocs/greyhound-admin-2025-final_greyhound_admin_2025/writable/logs/convnext-ai.log</string>
+	<key>StandardOutPath</key>
+	<string>/Applications/XAMPP/xamppfiles/htdocs/greyhound-admin-2025-final_greyhound_admin_2025/writable/logs/convnext-ai.log</string>
+	<key>ThrottleInterval</key>
+	<integer>15</integer>
+	<key>WorkingDirectory</key>
+	<string>/Applications/XAMPP/xamppfiles/htdocs/greyhound-admin-2025-final_greyhound_admin_2025/greyhound-hub-2.0</string>
+</dict>
+</plist>

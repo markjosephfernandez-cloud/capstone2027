@@ -59,9 +59,13 @@ Vagrantfile
 
 /writable/uploads/*
 !/writable/uploads/index.html
+/writable/upload-chunks/
 
 /writable/debugbar/*
 !/writable/debugbar/index.html
+
+# Local recovery archives and database backups
+/writable/backups/
 
 php_errors.log
 
@@ -121,21 +125,37 @@ _modules/*
 
 # Visual Studio Code
 .vscode/
-
+    
 /results/
 /phpunit.xml
 
 # Local Python virtual environments (including nested legacy projects)
 **/.venv/
 **/venv/
+**/.venv_ai_mac/
 **/env/
 **/yolo_env/
 
 
-@"
-.venv/
-venv/
 __pycache__/
 *.pyc
-.env
-"@ | Out-File -Encoding utf8 .gitignore
+
+# Downloaded visual model assets and runtime settings
+/greyhound-hub-2.0/models/
+/greyhound-hub-2.0/.ultralytics/
+
+# Code-only repository: local runtime data and generated artifacts
+/writable/**
+!/writable/**/
+!/writable/**/index.html
+!/writable/**/.htaccess
+!/writable/**/.gitignore
+/tmp/
+/output/
+/greyhound-hub-2.0/dataset/
+*.keras
+*.h5
+*.pth
+*.pt
+*.onnx
+/Revised_Chapter_1_and_2_Greyhound_Hub_2.0.docx

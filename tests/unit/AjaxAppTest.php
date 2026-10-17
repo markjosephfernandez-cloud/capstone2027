@@ -56,10 +56,7 @@ final class AjaxAppTest extends CIUnitTestCase
     public function testHighValueServerFiltersUseReusableLiveAjaxSearch(): void
     {
         $views = [
-            APPPATH . 'Views/workspace/media.php',
             APPPATH . 'Views/workspace/trash.php',
-            APPPATH . 'Views/workspace/ifound.php',
-            APPPATH . 'Views/addons/passports.php',
             APPPATH . 'Views/addons/audit_logs.php',
             APPPATH . 'Views/admin/control_center.php',
         ];

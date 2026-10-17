@@ -32,6 +32,12 @@ class PurgeTrashCommand extends BaseCommand
 
         $purged = (new TrashService())->purgeExpiredTrash($actor, null, $limit);
 
+        try {
+            $purged += (new \App\Services\ServerLibraryEditor(new \App\Services\ServerLibraryService()))->purgeExpiredTrash($limit);
+        } catch (\Throwable $exception) {
+            CLI::error('Server Trash cleanup unavailable: ' . $exception->getMessage());
+        }
+
         CLI::write('Purged ' . $purged . ' Trash item' . ($purged === 1 ? '' : 's') . ' older than ' . TrashService::RETENTION_DAYS . ' days.', 'green');
     }
 }

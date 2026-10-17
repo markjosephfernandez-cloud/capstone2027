@@ -23,6 +23,7 @@ class FolderController extends ApiController
         $metadata = [];
         $deletedPaths = [];
         foreach ((new FolderModel())->findAll() as $folder) {
+            if ((new \Config\Storage())->centralized() && str_starts_with((string)$folder['path'],'server-library/')) $folder['path'] = substr($folder['path'],15);
             if (! empty($folder['path'])) {
                 if ((int) ($folder['is_deleted'] ?? 0) === 1) {
                     $deletedPaths[(string) $folder['path']] = true;
@@ -43,13 +44,17 @@ class FolderController extends ApiController
                 continue;
             }
             $childPath = ltrim(($relative === '' ? '' : $relative . '/') . $item->getFilename(), '/');
+            if ((new \Config\Storage())->centralized()) {
+                if ($item->isLink()) continue;
+                try { (new \App\Services\ServerLibraryService())->relative($childPath); } catch (RuntimeException) { continue; }
+            }
             if (isset($deletedPaths[$childPath])) {
                 continue;
             }
             $folder    = $metadata[$childPath] ?? null;
             $items[]   = [
                 'id'          => $folder === null ? null : (int) $folder['id'],
-                'name'        => $item->getFilename(),
+                'name'        => $folder['name'] ?? $item->getFilename(),
                 'path'        => $childPath,
                 'description' => $folder['description'] ?? null,
                 'created_at'  => $folder['created_at'] ?? gmdate('Y-m-d H:i:s', $item->getCTime()),
@@ -77,6 +82,16 @@ class FolderController extends ApiController
             return $this->error('validation_error', 'description may not exceed 5,000 characters.', 422);
         }
 
+        if ((new \Config\Storage())->centralized()) {
+            try {
+                $library = new \App\Services\ServerLibraryService();
+                (new \App\Services\ServerLibraryEditor($library))->createFolder($parent,$name);
+                $id = (new \App\Services\CentralMediaService($library))->folder(trim($parent.'/'.$name,'/'));
+                (new FolderModel())->update($id,['description'=>trim($description)]);
+                return $this->success((new FolderModel())->find($id),201);
+            } catch (RuntimeException $error) { return $this->error('invalid_path',$error->getMessage(),422); }
+        }
+
         try {
             $parentPath = service('storage')->normalizeRelativePath($parent);
             $name       = service('storage')->normalizeRelativePath($name, false);
@@ -87,24 +102,44 @@ class FolderController extends ApiController
             if ($parentPath !== '' && (new FolderModel())->where('path', $parentPath)->where('is_deleted', 1)->first() !== null) {
                 return $this->error('invalid_path', 'The parent folder is in Trash.', 422);
             }
-            $parentDir  = service('storage')->directory($parentPath);
+            service('storage')->directory($parentPath);
+            $parentFolder = $parentPath === '' ? null : (new FolderModel())->where('path', $parentPath)->where('is_deleted', 0)->first();
         } catch (RuntimeException $exception) {
             return $this->error('invalid_path', $exception->getMessage(), 422);
         }
-        if (is_dir($parentDir . DIRECTORY_SEPARATOR . $name)) {
+        $parentId = $parentFolder === null ? null : (int) $parentFolder['id'];
+        $duplicates = (new FolderModel())->where('is_deleted', 0)->where('name', $name);
+        if ($parentPath !== '' && $parentFolder === null) {
+            $duplicates->where('path', $path);
+        } else {
+            $parentId === null ? $duplicates->where('parent_id IS NULL', null, false) : $duplicates->where('parent_id', $parentId);
+        }
+        if ($duplicates->first() !== null) {
             return $this->error('already_exists', 'A folder with that name already exists.', 409);
         }
-
         try {
-            service('storage')->directory($path, true);
+            $path = (new FolderModel())->availableStoragePath($path);
+        } catch (RuntimeException $exception) {
+            return $this->error('already_exists', $exception->getMessage(), 409);
+        }
+
+        $createdDirectory = null;
+        try {
+            $createdDirectory = service('storage')->directory($path, true);
             $id = (new FolderModel())->insert([
                 'name'        => $name,
+                'parent_id'   => $parentId,
                 'description' => trim($description),
                 'path'        => $path,
                 'created_at'  => gmdate('Y-m-d H:i:s'),
             ], true);
+            if ($id === false) {
+                throw new RuntimeException('The folder could not be saved.');
+            }
         } catch (\Throwable) {
-            @rmdir($parentDir . DIRECTORY_SEPARATOR . $name);
+            if ($createdDirectory !== null) {
+                @rmdir($createdDirectory);
+            }
 
             return $this->error('persistence_error', 'The folder could not be created.', 500);
         }

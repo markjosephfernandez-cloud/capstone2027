@@ -14,6 +14,10 @@ final class TrashSelectionViewTest extends CIUnitTestCase
         $this->assertStringContainsString('Restore selected', $html);
         $this->assertStringContainsString('Delete selected', $html);
         $this->assertStringContainsString("selectionActions.hidden = count === 0", $html);
+        $this->assertStringContainsString("allVisibleSelected ? 'Unselect all' : 'Select all visible'", $html);
+        $this->assertStringNotContainsString('id="clearTrashSelection"', $html);
+        $this->assertStringContainsString('trash-bulk-count d-none', $html);
+        $this->assertStringContainsString("selectionCount.classList.toggle('d-none', count === 0)", $html);
         $this->assertStringNotContainsString('workspace/trash/7/restore', $html);
         $this->assertStringNotContainsString('workspace/trash/7/delete', $html);
     }

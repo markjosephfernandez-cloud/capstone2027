@@ -12,9 +12,21 @@ use CodeIgniter\Config\BaseConfig;
  */
 class Storage extends BaseConfig
 {
+    public function centralized(): bool
+    {
+        return filter_var(env('greyhound.centralLibrary', false), FILTER_VALIDATE_BOOL);
+    }
+
     public function root(): string
     {
-        return rtrim((string) env('greyhound.storageRoot', WRITEPATH . 'uploads'), "\\/");
+        if ($this->centralized()) return $this->scanSourceRoot();
+        return $this->configuredProjectStorageRoot('greyhound.storageRoot', 'writable/uploads');
+    }
+
+    public function departmentRoot(): string
+    {
+        if ($this->centralized()) return $this->scanSourceRoot() . '/DEPARTMENT';
+        return $this->configuredProjectStorageRoot('greyhound.departmentStorageRoot', 'writable/Department');
     }
 
     /** @return list<string> */
@@ -27,7 +39,37 @@ class Storage extends BaseConfig
 
     public function maxUploadBytes(): int
     {
-        return max(1, (int) env('greyhound.maxUploadBytes', 104857600));
+        // Zero means no application-level per-file size limit.
+        return max(0, (int) env('greyhound.maxUploadBytes', 0));
+    }
+
+    /**
+     * Server-side inbox inspected by the iFound scanner. Keeping this outside
+     * the managed library prevents a scan from discovering its own copies.
+     */
+    public function scanSourceRoot(): string
+    {
+        return rtrim((string) env('greyhound.scanSourceRoot', WRITEPATH . 'scan-inbox'), "\\/");
+    }
+
+    public function scannerEndpoint(): string
+    {
+        return rtrim((string) env('greyhound.scannerEndpoint', ''), "\\/");
+    }
+
+    public function scanDestination(): string
+    {
+        return trim((string) env('greyhound.scanDestination', 'iFound Scanned Files'), "\\/");
+    }
+
+    public function maxScanFiles(): int
+    {
+        return max(1, min(50000, (int) env('greyhound.maxScanFiles', 10000)));
+    }
+
+    public function scanBatchSize(): int
+    {
+        return max(1, min(1000, (int) env('greyhound.scanBatchSize', 10)));
     }
 
     /** @return list<string> */
@@ -44,5 +86,32 @@ class Storage extends BaseConfig
             'application/vnd.ms-excel',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ];
+    }
+
+    /**
+     * Relative storage paths in .env are project-root relative. Resolving them
+     * explicitly prevents web requests (whose working directory is public/)
+     * and CLI maintenance commands from using different physical folders.
+     */
+    private function configuredProjectStorageRoot(string $environmentKey, string $default): string
+    {
+        $path = trim((string) env($environmentKey, $default));
+        if ($path === '') {
+            $path = $default;
+        }
+
+        if ($this->isAbsolutePath($path)) {
+            return rtrim($path, "\\/");
+        }
+
+        return rtrim(ROOTPATH, "\\/") . DIRECTORY_SEPARATOR
+            . str_replace('/', DIRECTORY_SEPARATOR, ltrim(str_replace('\\', '/', $path), '/'));
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return preg_match('#^[A-Za-z]:[\\\\/]#', $path) === 1
+            || str_starts_with($path, '/')
+            || str_starts_with($path, '\\\\');
     }
 }

@@ -1,0 +1,4 @@
+# Install into the inference environment after requirements-inference.txt.
+ultralytics==8.4.176
+deepface==0.0.102
+tf-keras==2.21.0

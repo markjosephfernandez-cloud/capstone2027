@@ -58,7 +58,7 @@
                 <div class="mobile-brand"><img src="<?= esc(base_url('assets/img/logoo.png')) ?>" alt="Greyhound Hub logo"><div><strong>Greyhound Hub</strong><span>Foundation University</span></div></div>
                 <h1 class="login-heading">Welcome back</h1>
                 <p class="login-intro">Sign in with your Foundation University employee account to continue.</p>
-                <?php if (! empty($error)): ?><div class="alert alert-danger login-alert" role="alert"><i class="bi bi-exclamation-circle me-1"></i><?= esc($error) ?></div><?php endif; ?>
+                <?php if (! empty($error)): ?><div class="alert alert-danger login-alert" role="alert" data-auto-dismiss><i class="bi bi-exclamation-circle me-1"></i><?= esc($error) ?></div><?php endif; ?>
                 <form action="<?= esc(site_url('login')) ?>" method="post">
                     <?= csrf_field() ?>
                     <div class="mb-3"><label class="login-label" for="yourEmployeeID">Employee ID</label><div class="field-wrap"><i class="bi bi-person-badge field-icon"></i><input type="text" inputmode="numeric" name="employee_id" class="form-control login-field" id="yourEmployeeID" placeholder="Enter your employee ID" autocomplete="username" value="<?= esc((string) ($employee_id ?? '')) ?>" required autofocus></div></div>
@@ -80,5 +80,7 @@ document.getElementById('passwordToggle').addEventListener('click', function () 
     this.querySelector('i').className = visible ? 'bi bi-eye' : 'bi bi-eye-slash';
 });
 </script>
+<script src="<?= esc(base_url('assets/js/notifications.js')) ?>"></script>
+<script>window.GreyhoundNotifications.init();</script>
 </body>
 </html>

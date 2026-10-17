@@ -7,6 +7,43 @@ use App\Libraries\RolePolicy;
 
 class DashboardController extends BaseController
 {
+    /** Return only the current user's activity unless they are a Super Admin. */
+    protected function recentActivity(array $actor): array
+    {
+        $db = db_connect();
+        if (! $db->tableExists('audit_logs')) {
+            return [];
+        }
+        $activity = $db->table('audit_logs')->select('id, user_name, action, description, created_at');
+        if (! RolePolicy::isSuperAdmin($actor)) {
+            $actorId = (string) ($actor['employee_id'] ?? '');
+            if (! ctype_digit($actorId) || (int) $actorId < 1) {
+                return [];
+            }
+            $activity->where('user_id', $actorId);
+        }
+
+        return $activity->orderBy('created_at', 'DESC')->orderBy('id', 'DESC')->limit(5)->get()->getResultArray();
+    }
+
+    protected function storageStats(array $actor, int $totalBytes): array
+    {
+        try {
+            $storagePath = service('storage')->root();
+            $diskTotal = RolePolicy::isCreativeAdmin($actor) ? @disk_total_space($storagePath) : $totalBytes;
+            $diskFree = RolePolicy::isCreativeAdmin($actor) ? @disk_free_space($storagePath) : 0;
+            if ($diskTotal === false || $diskFree === false) {
+                throw new \RuntimeException('Storage capacity is unavailable.');
+            }
+
+            return ['disk_total' => $diskTotal, 'disk_free' => $diskFree, 'disk_used' => max(0, $diskTotal - $diskFree), 'storage_available' => true];
+        } catch (\RuntimeException $exception) {
+            log_message('warning', 'Dashboard storage unavailable: {message}', ['message' => $exception->getMessage()]);
+
+            return ['disk_total' => 0, 'disk_free' => 0, 'disk_used' => 0, 'storage_available' => false];
+        }
+    }
+
     public function index()
     {
         if (session()->get('isLoggedIn') !== true) {
@@ -14,19 +51,19 @@ class DashboardController extends BaseController
         }
 
         helper('dashboard');
-        $db         = db_connect();
-        $actor      = session()->get();
+        $db = db_connect();
+        $actor = session()->get();
         $departmentUser = RolePolicy::role($actor) === 'department';
-        $assignedIds = $departmentUser ? array_map('intval', array_column($db->table('media_assignments')->select('media_id')->where('department', (string) ($actor['department'] ?? ''))->groupBy('media_id')->get()->getResultArray(), 'media_id')) : [];
-        $visible = $db->table('files')->where('is_deleted', 0);
-        if ($departmentUser) $assignedIds === [] ? $visible->where('id', 0) : $visible->whereIn('id', $assignedIds);
+        $fileTable = $departmentUser ? 'department_files' : 'files';
+        $visible = $db->table($fileTable)->where('is_deleted', 0);
+        if ($departmentUser) $visible->where('department', (string)($actor['department'] ?? ''));
         $activeFiles = (int) $visible->countAllResults();
-        $visible = $db->table('files')->where('is_deleted', 0);
-        if ($departmentUser) $assignedIds === [] ? $visible->where('id', 0) : $visible->whereIn('id', $assignedIds);
+        $visible = $db->table($fileTable)->where('is_deleted', 0);
+        if ($departmentUser) $visible->where('department', (string)($actor['department'] ?? ''));
         $totalBytes = (int) ($visible->selectSum('size')->get()->getRowArray()['size'] ?? 0);
         $totalFiles = $activeFiles;
-        $categoriesBuilder = $db->table('files')->select('filetype, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_size')->where('is_deleted', 0);
-        if ($departmentUser) $assignedIds === [] ? $categoriesBuilder->where('id', 0) : $categoriesBuilder->whereIn('id', $assignedIds);
+        $categoriesBuilder = $db->table($fileTable)->select('filetype, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_size')->where('is_deleted', 0);
+        if ($departmentUser) $categoriesBuilder->where('department', (string)($actor['department'] ?? ''));
         $categories = $categoriesBuilder->groupBy('filetype')
             ->orderBy('total_size', 'DESC')
             ->limit(6)
@@ -34,11 +71,11 @@ class DashboardController extends BaseController
             ->getResultArray();
         $trendStart = new \DateTimeImmutable('today', new \DateTimeZone('UTC'));
         $trendStart = $trendStart->modify('-29 days');
-        $uploadTrendBuilder = $db->table('files')
+        $uploadTrendBuilder = $db->table($fileTable)
             ->select('DATE(`dateupload`) AS `upload_date`, COUNT(*) AS `upload_count`', false)
             ->where('is_deleted', 0)
             ->where('dateupload >=', $trendStart->format('Y-m-d 00:00:00'));
-        if ($departmentUser) $assignedIds === [] ? $uploadTrendBuilder->where('id', 0) : $uploadTrendBuilder->whereIn('id', $assignedIds);
+        if ($departmentUser) $uploadTrendBuilder->where('department', (string)($actor['department'] ?? ''));
         $uploadRows = $uploadTrendBuilder
             ->groupBy('DATE(`dateupload`)', false)
             ->orderBy('upload_date', 'ASC')
@@ -58,23 +95,18 @@ class DashboardController extends BaseController
                 'count' => $uploadsByDate[$dateKey] ?? 0,
             ];
         }
-        $activity = RolePolicy::isCreativeAdmin($actor) && $db->tableExists('audit_logs')
-            ? $db->table('audit_logs')->select('user_name, action, description, created_at')->orderBy('created_at', 'DESC')->limit(5)->get()->getResultArray()
-            : [];
+        $activity = $this->recentActivity($actor);
         $canManageDistribution = RolePolicy::allows($actor, 'distribution.manage');
         $departmentRequests = $canManageDistribution && $db->tableExists('media_requests')
             ? $db->table('media_requests r')
-                ->select('r.id, r.department, r.title, r.status, r.submitted_at, requester.name AS requester_name')
+                ->select('r.id, r.department, r.title, r.status, r.authorization_status, r.submitted_at, requester.name AS requester_name')
                 ->join('user requester', 'requester.employee_id = r.requested_by', 'left')
                 ->orderBy('r.submitted_at', 'DESC')
                 ->limit(5)
                 ->get()
                 ->getResultArray()
             : [];
-        $storagePath = service('storage')->root();
-        $diskTotal   = RolePolicy::isCreativeAdmin($actor) ? (@disk_total_space($storagePath) ?: 0) : $totalBytes;
-        $diskFree    = RolePolicy::isCreativeAdmin($actor) ? (@disk_free_space($storagePath) ?: 0) : 0;
-        $diskUsed    = max(0, $diskTotal - $diskFree);
+        $storageStats = $this->storageStats($actor, $totalBytes);
 
         return view('dashboard', [
             'user'       => session()->get(),
@@ -87,9 +119,7 @@ class DashboardController extends BaseController
                 'total_files'  => $totalFiles,
                 'active_files' => $activeFiles,
                 'total_bytes'  => $totalBytes,
-                'disk_total'   => $diskTotal,
-                'disk_free'    => $diskFree,
-                'disk_used'    => $diskUsed,
+                ...$storageStats,
             ],
             'categories' => $categories,
             'uploadTrend' => $uploadTrend,

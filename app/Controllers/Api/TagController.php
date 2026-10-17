@@ -49,6 +49,10 @@ class TagController extends ApiController
             if ($tag === '' || mb_strlen($tag) > 100) {
                 return $this->error('validation_error', 'Each tag must contain 1 to 100 characters.', 422);
             }
+            $tag = \App\Libraries\MediaTagPolicy::normalize($tag, $file);
+            if ($tag === '') {
+                continue;
+            }
             $clean[mb_strtolower($tag)] = $tag;
         }
         $clean = array_values($clean);

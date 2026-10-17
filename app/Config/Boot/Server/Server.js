@@ -55,7 +55,7 @@ app.post('/api/login', (req, res) => {
     } else {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-  });
+  }); 
 });
 
 app.listen(port, () => {

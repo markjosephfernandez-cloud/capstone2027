@@ -18,6 +18,11 @@ class AdminController extends BaseController
             return $redirect;
         }
 
+        $actor = session()->get();
+        $success = session()->getFlashdata('success');
+        $error = session()->getFlashdata('error');
+        session()->close();
+
         helper('dashboard');
         $db = db_connect();
         $search = trim(mb_substr((string) $this->request->getGet('q'), 0, 100));
@@ -58,7 +63,7 @@ class AdminController extends BaseController
             ->select('u.employee_id, u.name, u.department, u.position, u.email_address, u.role, u.is_active, u.created_at, u.last_login_at, COUNT(f.id) AS media_count')
             ->join('files f', 'f.employee_id = u.employee_id AND f.is_deleted = 0', 'left', false);
         if ($search !== '') {
-            $teamQuery->groupStart()->like('u.name', $search)->orLike('u.email_address', $search)->orLike('u.employee_id', $search)->orLike('u.position', $search)->groupEnd();
+            $teamQuery->groupStart()->like('u.name', $search)->orLike('u.employee_id', $search)->orLike('u.email_address', $search)->orLike('u.employee_id', $search)->orLike('u.position', $search)->groupEnd();
         }
         if ($roleFilter !== '') {
             $teamQuery->where('u.role', $roleFilter);
@@ -74,24 +79,51 @@ class AdminController extends BaseController
             ->limit(200)
             ->get()->getResultArray();
 
-        $activity = $db->tableExists('audit_logs')
-            ? $db->table('audit_logs')->select('user_name, module, action, description, created_at')->orderBy('created_at', 'DESC')->limit(12)->get()->getResultArray()
-            : [];
-        $storagePath = service('storage')->root();
+        $storageAvailable = false;
+        $storageWritable = false;
+        try {
+            $storagePath = service('storage')->root();
+            $storageAvailable = is_dir($storagePath);
+            $storageWritable = is_writable($storagePath);
+        } catch (RuntimeException) { /* Keep System Health accessible while storage is offline. */ }
         $systemHealth = [
             ['label' => 'Database', 'detail' => $db->getDatabase(), 'healthy' => true, 'icon' => 'bi-database-check'],
-            ['label' => 'Media storage', 'detail' => is_writable($storagePath) ? 'Writable' : 'Not writable', 'healthy' => is_dir($storagePath) && is_writable($storagePath), 'icon' => 'bi-hdd-stack'],
+            ['label' => 'Media storage', 'detail' => !$storageAvailable ? 'Unavailable' : ($storageWritable ? 'Writable' : 'Not writable'), 'healthy' => $storageAvailable && $storageWritable, 'icon' => 'bi-hdd-stack'],
             ['label' => 'Image processing', 'detail' => extension_loaded('gd') ? 'PHP GD available' : 'PHP GD missing', 'healthy' => extension_loaded('gd'), 'icon' => 'bi-images'],
             ['label' => 'AI endpoint', 'detail' => trim((string) env('greyhound.eventModelEndpoint', '')) !== '' ? 'Configured' : 'Not configured', 'healthy' => trim((string) env('greyhound.eventModelEndpoint', '')) !== '', 'icon' => 'bi-cpu'],
         ];
 
         return view('admin/control_center', [
-            'user' => session()->get(), 'activePage' => 'admin-control', 'title' => 'Admin Control Center',
-            'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error'),
+            'user' => $actor, 'activePage' => 'admin-control', 'title' => 'Admin Control Center',
+            'success' => $success, 'error' => $error,
             'search' => $search, 'roleFilter' => $roleFilter, 'statusFilter' => $statusFilter,
             'stats' => compact('userCount', 'activeUsers', 'inactiveUsers', 'adminCount', 'staffCount', 'activeFiles', 'trashCount', 'storageBytes', 'passportAiFlags', 'activeTokens', 'legacyPasswords', 'consentMissing', 'expiredTrash'),
-            'team' => $team, 'activity' => $activity, 'systemHealth' => $systemHealth,
+            'team' => $team, 'systemHealth' => $systemHealth,
+            'departmentMediaSummary' => (new \App\Models\MediaReportModel())->departmentSummary(),
         ]);
+    }
+
+    public function serverHealth()
+    {
+        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        session()->close();
+        $connected = false;
+        $writable = false;
+        $connectionError = null;
+        try {
+            $library = new \App\Services\ServerLibraryService();
+            $library->root();
+            $connected = true;
+            $writable = $library->writable();
+        } catch (RuntimeException $exception) { $connectionError = $exception->getMessage(); }
+        try {
+            $catalog = (new \App\Services\ServerLibraryCatalog())->statusInfo();
+            $catalog['completed_display'] = \App\Libraries\DisplayTime::format($catalog['completed_at'] ?? null, 'M d, Y g:i A', 'Not yet completed');
+            $catalog['updated_display'] = \App\Libraries\DisplayTime::format($catalog['updated_at'] ?? null, 'M d, Y g:i A', 'Not available');
+        } catch (\Throwable $exception) {
+            $catalog = ['status'=>'unavailable', 'completed_display'=>'Not available', 'updated_display'=>'Not available', 'last_error'=>'Catalog status could not be loaded.'];
+        }
+        return $this->response->noCache()->setJSON(compact('connected', 'writable', 'connectionError', 'catalog'));
     }
 
     public function createUser()
@@ -104,7 +136,10 @@ class AdminController extends BaseController
             $profile = $this->validatedProfile();
             $password = (string) $this->request->getPost('password');
             $this->validatePassword($password, (string) $this->request->getPost('password_confirm'));
-            (new UserModel())->insert(array_merge($profile, ['employee_id' => (int) $employeeId, 'password' => '', 'password_hash' => password_hash($password, PASSWORD_DEFAULT), 'is_active' => 1, 'created_at' => gmdate('Y-m-d H:i:s'), 'updated_at' => gmdate('Y-m-d H:i:s')]));
+            $this->ensureDepartmentStorage($profile);
+            if ((new UserModel())->insert(array_merge($profile, ['employee_id' => (int) $employeeId, 'password' => '', 'password_hash' => password_hash($password, PASSWORD_DEFAULT), 'is_active' => 1, 'created_at' => gmdate('Y-m-d H:i:s'), 'updated_at' => gmdate('Y-m-d H:i:s')])) === false) {
+                throw new RuntimeException('The account could not be saved.');
+            }
         } catch (RuntimeException $exception) {
             return redirect()->to(site_url('admin/control-center#users'))->with('error', $exception->getMessage());
         }
@@ -124,6 +159,7 @@ class AdminController extends BaseController
             $actorId = (int) session()->get('employee_id');
             if ($employeeId === $actorId && $profile['role'] !== 'super_admin') throw new RuntimeException('You cannot remove your own Super Admin role.');
             if ((string) $target['role'] === 'super_admin' && $profile['role'] !== 'super_admin' && (int) ($target['is_active'] ?? 1) === 1 && $this->activeAdminCount() <= 1) throw new RuntimeException('At least one active Super Admin account must remain.');
+            $this->ensureDepartmentStorage($profile);
             $profile['updated_at'] = gmdate('Y-m-d H:i:s');
             $model->update($employeeId, $profile);
             if ($employeeId === $actorId) session()->set(['name' => $profile['name'], 'department' => $profile['department'], 'position' => $profile['position']]);
@@ -225,6 +261,14 @@ class AdminController extends BaseController
     {
         if ($password !== $confirmation) throw new RuntimeException('The password confirmation does not match.');
         if (strlen($password) < 8 || strlen($password) > 128 || preg_match('/[A-Za-z]/', $password) !== 1 || preg_match('/\d/', $password) !== 1) throw new RuntimeException('Password must be 8-128 characters and contain at least one letter and one number.');
+    }
+
+    /** @param array{name:string,department:string,position:string,email_address:string,role:string} $profile */
+    private function ensureDepartmentStorage(array $profile): void
+    {
+        if ($profile['role'] === 'department') {
+            service('storage')->ensureDepartmentDirectory($profile['department']);
+        }
     }
 
     private function activeAdminCount(): int

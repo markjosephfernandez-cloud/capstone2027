@@ -12,13 +12,13 @@
                     <?php foreach ($notifications as $notification): ?>
                         <form class="list-group-item px-0" action="<?= esc(site_url('notifications/' . (int) $notification['id'] . '/read')) ?>" method="post">
                             <?= csrf_field() ?>
-                            <button class="btn w-100 text-start p-0" type="submit">
-                                <span class="d-flex justify-content-between gap-3">
+                            <button class="btn w-100 text-start text-break p-0" type="submit">
+                                <span class="d-flex justify-content-between flex-wrap gap-3">
                                     <strong><?= esc($notification['title']) ?></strong>
                                     <span class="badge <?= (int) $notification['is_read'] === 1 ? 'bg-light text-muted' : 'bg-primary-subtle text-primary' ?>"><?= (int) $notification['is_read'] === 1 ? 'Read' : 'Unread' ?></span>
                                 </span>
                                 <span class="d-block small text-muted mt-1"><?= nl2br(esc($notification['message'])) ?></span>
-                                <span class="d-block text-muted mt-1" style="font-size:.75rem"><?= esc(date('M j, Y g:i A', strtotime((string) $notification['created_at']))) ?></span>
+                                <span class="d-block text-muted mt-1" style="font-size:.75rem"><?= esc(\App\Libraries\DisplayTime::format($notification['created_at'], 'M j, Y g:i A')) ?></span>
                             </button>
                         </form>
                     <?php endforeach; ?>

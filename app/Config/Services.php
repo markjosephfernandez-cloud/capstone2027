@@ -19,6 +19,26 @@ use CodeIgniter\Config\BaseService;
  */
 class Services extends BaseService
 {
+    public static function incomingrequest(?App $config = null, bool $getShared = true)
+    {
+        if ($getShared) {
+            return static::getSharedInstance('incomingrequest', $config);
+        }
+
+        $request = \CodeIgniter\Config\Services::incomingrequest($config, false);
+        // PHP uses zero for unlimited POST size. This framework version instead
+        // leaves the literal stream name as the body of nonempty requests.
+        // Multipart uploads must stay with PHP's normal streaming/file handling.
+        if ((string) ini_get('post_max_size') === '0'
+            && $request->getBody() === 'php://input'
+            && !str_contains(strtolower($request->getHeaderLine('Content-Type')), 'multipart/form-data')) {
+            $body = file_get_contents('php://input');
+            $request->setBody($body === false || $body === '' ? null : $body);
+        }
+
+        return $request;
+    }
+
     public static function authContext(bool $getShared = true): \App\Libraries\AuthContext
     {
         if ($getShared) {
@@ -44,6 +64,15 @@ class Services extends BaseService
         }
 
         return new \App\Services\StorageService();
+    }
+
+    public static function serverScan(bool $getShared = true): \App\Services\ServerScanService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('serverScan');
+        }
+
+        return new \App\Services\ServerScanService();
     }
 
     public static function audit(bool $getShared = true): \App\Services\AuditService

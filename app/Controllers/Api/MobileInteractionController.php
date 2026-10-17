@@ -105,7 +105,7 @@ class MobileInteractionController extends ApiController
 
     private function published(int $id): bool
     {
-        return (new FileModel())->where(['id' => $id, 'is_deleted' => 0, 'release_status' => 'published'])->countAllResults() > 0;
+        return (new FileModel())->where(['id' => $id, 'is_deleted' => 0, 'release_status' => 'published'])->where('app_published_at IS NOT NULL', null, false)->countAllResults() > 0;
     }
 
     private function channelKey(string $channel): string

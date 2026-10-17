@@ -47,7 +47,7 @@
                             <?php if ($unreadNotificationCount > 0): ?><form action="<?= esc(site_url('notifications/read-all')) ?>" method="post"><?= csrf_field() ?><button class="notification-read-all" type="submit"><i class="bi bi-check2-all me-1"></i>Read all</button></form><?php endif; ?>
                         </li>
                         <li class="notification-scroll"><ul class="list-unstyled mb-0">
-                            <?php foreach ($headerNotifications as $notification): ?><li class="notification-item"><form action="<?= esc(site_url('notifications/' . (int) $notification['id'] . '/read')) ?>" method="post"><?= csrf_field() ?><button class="notification-button" type="submit"><strong><?= esc($notification['title']) ?></strong><span><?= nl2br(esc($notification['message'])) ?></span><time datetime="<?= esc((string) $notification['created_at']) ?>"><?= esc(date('M j, g:i A', strtotime((string) $notification['created_at']))) ?></time></button></form></li><?php endforeach; ?>
+                            <?php foreach ($headerNotifications as $notification): ?><li class="notification-item"><form action="<?= esc(site_url('notifications/' . (int) $notification['id'] . '/read')) ?>" method="post"><?= csrf_field() ?><button class="notification-button" type="submit"><strong><?= esc($notification['title']) ?></strong><span><?= nl2br(esc($notification['message'])) ?></span><time datetime="<?= esc(\App\Libraries\DisplayTime::format($notification['created_at'], 'c', '')) ?>"><?= esc(\App\Libraries\DisplayTime::format($notification['created_at'], 'M j, g:i A')) ?></time></button></form></li><?php endforeach; ?>
                             <?php if ($headerNotifications === []): ?><li class="notification-empty"><i class="bi bi-bell-slash"></i><span>No notifications yet.</span></li><?php endif; ?>
                         </ul></li>
                         <li class="notification-menu-footer"><a href="<?= esc(site_url('workspace/notifications')) ?>">View all notifications <i class="bi bi-arrow-right ms-1"></i></a></li>
@@ -62,12 +62,12 @@
         <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'dashboard' ? '' : 'collapsed' ?>" href="<?= esc(site_url('dashboard')) ?>"><i class="bi bi-grid"></i><span>Dashboard</span></a></li>
         <?php if (\App\Libraries\RolePolicy::allows($user ?? [], 'files.manage')): ?>
             <li class="nav-heading">File Management</li>
-            <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'file-management' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/file-management')) ?>"><i class="bi bi-house-door"></i><span>File Management</span></a></li>
+            <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'file-management' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/server-library')) ?>"><i class="bi bi-hdd-network"></i><span>File Management</span></a></li>
             <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'recent' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/recent')) ?>"><i class="bi bi-clock-history"></i><span>Recent</span></a></li>
             <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'ifound' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/ifound')) ?>"><i class="bi bi-search-heart"></i><span>iFound</span></a></li>
             <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'trash' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/trash')) ?>"><i class="bi bi-trash"></i><span>Trash</span></a></li>
             <li class="nav-heading">Creatives AI Tools</li>
-            <?php foreach (['passports' => ['Metadata Passports', 'bi-patch-check'], 'watermarking' => ['Watermarking', 'bi-droplet']] as $key => [$label, $icon]): ?><li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === $key ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/' . $key)) ?>"><i class="bi <?= esc($icon) ?>"></i><span><?= esc($label) ?></span></a></li><?php endforeach; ?>
+            <?php foreach (['passports' => ['Metadata Passports', 'bi-patch-check'], 'watermarking' => ['Watermarking', 'bi-droplet']] as $key => [$label, $icon]): ?><li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === $key ? '' : 'collapsed' ?>" href="<?= esc(site_url($key === 'watermarking' ? 'workspace/server-library/watermarking' : 'workspace/' . $key)) ?>"><i class="bi <?= esc($icon) ?>"></i><span><?= esc($label) ?></span></a></li><?php endforeach; ?>
             <li class="nav-item">
                 <a class="nav-link <?= in_array($activePage ?? '', ['distribution', 'published-files'], true) ? '' : 'collapsed' ?>" data-bs-target="#release-media-nav" data-bs-toggle="collapse" href="#">
                     <i class="bi bi-send-check"></i><span>Release Media</span><i class="bi bi-chevron-down ms-auto"></i>
@@ -95,7 +95,10 @@
             <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'notifications' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/notifications')) ?>"><i class="bi bi-bell"></i><span>Notifications</span><?php if ($unreadNotificationCount > 0): ?><span class="sidebar-notification-badge" aria-label="<?= esc((string) $unreadNotificationCount) ?> unread notifications"><?= $unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount ?></span><?php endif; ?></a></li>
         <?php elseif ($role === 'writer'): ?>
             <li class="nav-heading">File Management</li>
-            <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'file-management' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/file-management')) ?>"><i class="bi bi-house-door"></i><span>File Management</span></a></li>
+            <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'file-management' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/server-library')) ?>"><i class="bi bi-hdd-network"></i><span>File Management</span></a></li>
+        <?php endif; ?>
+        <?php if ((new \Config\Storage())->centralized() && in_array($role,['writer','department'],true)): ?>
+            <li class="nav-item"><a class="nav-link <?= ($activePage ?? '') === 'recent' ? '' : 'collapsed' ?>" href="<?= esc(site_url('workspace/recent')) ?>"><i class="bi bi-clock-history"></i><span>Recent</span></a></li>
         <?php endif; ?>
         <?php if (\App\Libraries\RolePolicy::isSuperAdmin($user ?? [])): ?>
             <li class="nav-heading">Administration</li>

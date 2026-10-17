@@ -5,6 +5,13 @@ use CodeIgniter\Test\CIUnitTestCase;
 /** @internal */
 final class PassportViewTest extends CIUnitTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Views retain data by default; another page's pagination is not input here.
+        service('renderer')->resetData();
+    }
+
     public function testPassportPageRendersWithSharedApplicationLayout(): void
     {
         $html = view('addons/passports', [

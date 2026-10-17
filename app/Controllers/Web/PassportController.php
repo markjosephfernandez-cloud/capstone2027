@@ -7,6 +7,56 @@ use App\Libraries\RolePolicy;
 
 class PassportController extends BaseController
 {
+    private function scanAccess()
+    {
+        if (session()->get('isLoggedIn') !== true) return $this->scanResponse(['ok'=>false, 'message'=>'Sign in again to scan image metadata.'], 401);
+        if (!RolePolicy::isCreativeAdmin(session()->get())) return $this->scanResponse(['ok'=>false, 'message'=>'Only administrators can generate missing passports.'], 403);
+        return null;
+    }
+
+    private function scanResponse(array $data, int $status = 200)
+    {
+        return $this->response->noCache()->setStatusCode($status)->setJSON($data + ['csrfToken'=>csrf_hash(), 'csrfTokenName'=>csrf_token()]);
+    }
+
+    public function scanToken()
+    {
+        if ($denied = $this->scanAccess()) return $denied;
+        return $this->scanResponse(['ok'=>true]);
+    }
+
+    public function browseScan()
+    {
+        if ($denied = $this->scanAccess()) return $denied;
+        session()->close();
+        try {
+            $folder = (string) $this->request->getGet('folder');
+            return $this->scanResponse(service('serverScan')->browse($folder, mb_substr(trim((string) $this->request->getGet('q')), 0, 120), (int) $this->request->getGet('page')));
+        } catch (\Throwable $error) {
+            return $this->scanResponse(['ok'=>false, 'message'=>$error instanceof \RuntimeException ? $error->getMessage() : 'The image library is unavailable. Please retry.'], 422);
+        }
+    }
+
+    public function scanImage()
+    {
+        if ($denied = $this->scanAccess()) return $denied;
+        $actor = session()->get();
+        session()->close();
+        try {
+            $input = $this->request->getPost('file_path');
+            if (!is_string($input) || $input === '') throw new \RuntimeException('Select a valid image.');
+            $fileId = service('serverScan')->passportFile($input, (int) ($actor['employee_id'] ?? 0));
+            $result = service('passports')->generateMissingImage($fileId, $actor);
+            if ($result['status'] === 'complete') {
+                try { service('audit')->record($actor, $this->request, 'metadata', 'PASSPORT_GENERATED', 'file', $fileId, 'Scanned image metadata and generated its missing passport.'); }
+                catch (\Throwable $error) { log_message('error', 'Passport scan audit: {error}', ['error'=>$error->getMessage()]); }
+            }
+            return $this->scanResponse(['ok'=>true] + $result);
+        } catch (\Throwable $error) {
+            return $this->scanResponse(['ok'=>false, 'message'=>$error instanceof \RuntimeException ? $error->getMessage() : 'Metadata could not be scanned. Please retry.'], 422);
+        }
+    }
+
     public function backfill()
     {
         if (session()->get('isLoggedIn') !== true) {

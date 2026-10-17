@@ -18,6 +18,6 @@ class FileModel extends Model
         'employee_id', 'is_deleted', 'last_action', 'last_action_at', 'tags',
         'publication_channel', 'published_at', 'published_by', 'release_status', 'storage_stage',
         'distribution_type', 'distribution_target', 'processed_at', 'updated_at',
-        'downloadable',
+        'downloadable', 'app_post_id', 'app_published_at', 'app_pinned',
     ];
 }

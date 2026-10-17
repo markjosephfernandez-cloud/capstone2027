@@ -13,26 +13,20 @@ class FileController extends ApiController
 {
     public function index()
     {
-        $files  = new FileModel();
+        $files  = $this->actorFileModel();
         $search = trim((string) $this->request->getGet('search'));
         $type   = strtolower(trim((string) $this->request->getGet('type')));
         $folder = $this->request->getGet('folder_id');
         $trash  = filter_var($this->request->getGet('trashed') ?? false, FILTER_VALIDATE_BOOLEAN);
         $query  = $files->where('is_deleted', $trash ? 1 : 0);
         $actor = $this->actor();
-        if ((string) ($actor['role'] ?? '') === 'department') {
-            $assignedIds = array_map('intval', array_column(db_connect()->table('media_assignments')->select('media_id')->where('department', (string) ($actor['department'] ?? ''))->groupBy('media_id')->get()->getResultArray(), 'media_id'));
-            if ($assignedIds === []) {
-                return $this->success([], 200, ['page' => $this->page(), 'per_page' => $this->perPage(), 'total' => 0]);
-            }
-            $query->whereIn('id', $assignedIds);
-        }
-
         if ($search !== '') {
             if (mb_strlen($search) > 150) {
                 return $this->error('validation_error', 'Search text may not exceed 150 characters.', 422);
             }
-            $folderIds = array_map('intval', array_column((new FolderModel())->where('is_deleted', 0)->select('id')->like('name', $search)->findAll(), 'id'));
+            $folderModel = new FolderModel();
+            if (($actor['role'] ?? '') === 'department') $folderModel->setTable('department_folders')->where('department', (string)($actor['department'] ?? ''));
+            $folderIds = array_map('intval', array_column($folderModel->where('is_deleted', 0)->select('id')->like('name', $search)->findAll(), 'id'));
             $query->groupStart()
                 ->like('display_title', $search)
                 ->orLike('tags', $search)
@@ -90,6 +84,33 @@ class FileController extends ApiController
             return $this->error('validation_error', 'A file upload is required.', 422);
         }
 
+        if ((new \Config\Storage())->centralized()) {
+            try {
+                $displayTitle = MediaTitle::validate($this->request->getPost('display_title'));
+                $description = trim((string)$this->request->getPost('description'));
+                if (mb_strlen($description) > 5000) throw new RuntimeException('Description may not exceed 5,000 characters.');
+                $channel = trim((string)$this->request->getPost('channel')) ?: \App\Services\AppPublishingService::DEFAULT_CHANNEL;
+                $folderId = $this->request->getPost('folder_id');
+                $directory = (string)$this->request->getPost('directory');
+                if ($folderId !== null && $folderId !== '') {
+                    $folder = (new FolderModel())->where('is_deleted',0)->find((int)$folderId);
+                    if (!$folder) throw new RuntimeException('Choose an available folder.');
+                    $directory = (string)$folder['path'];
+                    if (str_starts_with($directory,'server-library/')) $directory = substr($directory,15);
+                }
+                $library = new \App\Services\ServerLibraryService();
+                $result = (new \App\Services\ServerLibraryUploadService($library))->receive($uploaded,
+                    ['folder_id'=>$directory,'upload_batch_id'=>bin2hex(random_bytes(16))],$this->actor(),
+                    function ($path) use ($library,$displayTitle,$description,$channel): void {
+                        $id = (new \App\Services\CentralMediaService($library))->register($path,$this->actor());
+                        (new FileModel())->update($id,['display_title'=>$displayTitle,'description'=>$description,'featured'=>1,'downloadable'=>1,'last_action'=>'published','last_action_at'=>gmdate('Y-m-d H:i:s')]);
+                        (new \App\Services\AppPublishingService())->receive([$id],$displayTitle,$description,$channel);
+                    });
+                $id = (new \App\Services\CentralMediaService($library))->register($result['path'],$this->actor());
+                return $this->success($this->payload((new FileModel())->find($id)),201);
+            } catch (RuntimeException | \InvalidArgumentException $error) { return $this->error('upload_rejected',$error->getMessage(),422); }
+        }
+
         try {
             $displayTitle = MediaTitle::validate($this->request->getPost('display_title'));
         } catch (\InvalidArgumentException $exception) {
@@ -105,7 +126,7 @@ class FileController extends ApiController
         }
         $folderId = $folderId === null || $folderId === '' ? null : (int) $folderId;
         $contentHash = hash_file('sha256', $uploaded->getTempName()) ?: null;
-        $original = $contentHash === null ? null : (new FileModel())->where('is_deleted', 0)->groupStart()->where('content_hash', $contentHash)->orWhere('filehash', $contentHash)->groupEnd()->first();
+
 
         try {
             $stored = service('storage')->storeUpload($uploaded, (string) $this->request->getPost('directory'));
@@ -117,24 +138,12 @@ class FileController extends ApiController
         $files  = new FileModel();
         $actor  = $this->actor();
         $fileId = null;
-        if ($original !== null) {
-            $db->transStart();
-            $db->table('duplicate_media')->insert(['original_file_id' => (int) $original['id'], 'filename' => $stored['filename'], 'display_title' => $displayTitle, 'filepath' => $stored['filepath'], 'mime_type' => $stored['mimeType'], 'size' => $stored['size'], 'content_hash' => $contentHash, 'uploaded_by' => (int) $actor['employee_id'], 'status' => 'pending', 'created_at' => gmdate('Y-m-d H:i:s')]);
-            $db->table('files')->where('id', (int) $original['id'])->set('duplicate_count', 'duplicate_count + 1', false)->update();
-            $db->transComplete();
-            if (! $db->transStatus()) {
-                @unlink($stored['filepath']);
-                return $this->error('persistence_error', 'The duplicate could not be saved.', 500);
-            }
-            service('audit')->record($actor, $this->request, 'upload', 'DUPLICATE_DETECTED', 'file', (int) $original['id'], 'Saved duplicate upload "' . $stored['filename'] . '" without changing the original.');
-            return $this->error('duplicate_detected', 'This media already exists. The duplicate was retained in the duplicate queue.', 409, ['display_title' => $displayTitle, 'original_display_title' => MediaTitle::forFile($original)]);
-        }
-        $db->transStart();
+
         try {
             $fileId = $files->insert([
                 'filename'       => $stored['filename'],
                 'display_title'  => $displayTitle,
-                'filepath'       => $stored['filepath'],
+                'filepath'       => service('storage')->databasePath($stored['filepath']),
                 'filetype'       => strtolower((string) pathinfo($stored['filename'], PATHINFO_EXTENSION)),
                 'mime_type'      => $stored['mimeType'],
                 'media_kind'     => $this->mediaKindForMimeType($stored['mimeType']),
@@ -162,9 +171,9 @@ class FileController extends ApiController
             }
             $detection = service('eventDetection')->classifyAndStore($file);
             service('passports')->generate($file, $actor, $detection);
-            service('watermarking')->applyForCreativeUpload($file, $actor);
             $publishedAt = gmdate('Y-m-d H:i:s');
-            $files->update((int) $fileId, ['storage_stage' => 'processed', 'processed_at' => $publishedAt, 'release_status' => 'published', 'featured' => 1, 'published_at' => $publishedAt, 'publication_channel' => trim((string) $this->request->getPost('channel')) ?: 'General Events', 'last_action' => 'published', 'last_action_at' => $publishedAt, 'updated_at' => $publishedAt]);
+            $files->update((int) $fileId, ['storage_stage' => 'processed', 'processed_at' => $publishedAt, 'release_status' => 'published', 'featured' => 1, 'published_at' => $publishedAt, 'publication_channel' => trim((string) $this->request->getPost('channel')) ?: \App\Services\AppPublishingService::DEFAULT_CHANNEL, 'last_action' => 'published', 'last_action_at' => $publishedAt, 'updated_at' => $publishedAt]);
+            (new \App\Services\AppPublishingService())->receive([(int)$fileId], $displayTitle, $description, trim((string)$this->request->getPost('channel')) ?: \App\Services\AppPublishingService::DEFAULT_CHANNEL);
         } catch (\Throwable $exception) {
             $db->transRollback();
             @unlink($stored['filepath']);
@@ -242,7 +251,7 @@ class FileController extends ApiController
 
     public function rename(int $id)
     {
-        if (($response = $this->requireRole(['admin', 'staff'])) !== null) {
+        if (($response = $this->requireRole(['super_admin', 'admin', 'staff'])) !== null) {
             return $response;
         }
         $file = $this->findFile($id);
@@ -254,8 +263,20 @@ class FileController extends ApiController
             return $this->error('validation_error', 'filename is required.', 422);
         }
 
+        if ((new \Config\Storage())->centralized() && str_starts_with($file['filepath'],'server-library/')) {
+            try {
+                $path = substr($file['filepath'],15);
+                $editor = new \App\Services\ServerLibraryEditor(new \App\Services\ServerLibraryService());
+                $editor->rename($path,$filename);
+                return $this->success($this->payload((new FileModel())->find($id)));
+            } catch (RuntimeException $error) { return $this->error('operation_rejected',$error->getMessage(),422); }
+        }
+
+        $storage = service('storage');
         try {
-            $newPath = service('storage')->renameDatabaseFile((string) $file['filepath'], $filename);
+            $oldPhysicalPath = $storage->resolveDatabaseFile((string) $file['filepath']);
+            $newPath = $storage->renameDatabaseFile((string) $file['filepath'], $filename);
+            $newDatabasePath = $storage->databasePath($newPath);
         } catch (RuntimeException $exception) {
             return $this->error('rename_rejected', $exception->getMessage(), 422);
         }
@@ -264,13 +285,13 @@ class FileController extends ApiController
         try {
             (new FileModel())->update($id, [
                 'filename'       => $newName,
-                'filepath'       => $newPath,
+                'filepath'       => $newDatabasePath,
                 'filetype'       => strtolower((string) pathinfo($newName, PATHINFO_EXTENSION)),
                 'last_action'    => 'renamed',
                 'last_action_at' => gmdate('Y-m-d H:i:s'),
             ]);
         } catch (\Throwable) {
-            @rename($newPath, (string) $file['filepath']);
+            @rename($newPath, $oldPhysicalPath);
 
             return $this->error('persistence_error', 'The filename changed on disk but could not be saved; it was reverted.', 500);
         }
@@ -294,15 +315,27 @@ class FileController extends ApiController
             return $this->error('validation_error', 'directory is required.', 422);
         }
 
+        if ((new \Config\Storage())->centralized() && str_starts_with($file['filepath'],'server-library/')) {
+            try {
+                $path = substr($file['filepath'],15);
+                $editor = new \App\Services\ServerLibraryEditor(new \App\Services\ServerLibraryService());
+                $editor->move([$path],$directory);
+                return $this->success($this->payload((new FileModel())->find($id)));
+            } catch (RuntimeException $error) { return $this->error('operation_rejected',$error->getMessage(),422); }
+        }
+
+        $storage = service('storage');
         try {
-            $newPath = service('storage')->moveDatabaseFile((string) $file['filepath'], $directory);
+            $oldPhysicalPath = $storage->resolveDatabaseFile((string) $file['filepath']);
+            $newPath = $storage->moveDatabaseFile((string) $file['filepath'], $directory);
+            $newDatabasePath = $storage->databasePath($newPath);
         } catch (RuntimeException $exception) {
             return $this->error('move_rejected', $exception->getMessage(), 422);
         }
         try {
-            (new FileModel())->update($id, ['filepath' => $newPath, 'last_action' => 'updated', 'last_action_at' => gmdate('Y-m-d H:i:s')]);
+            (new FileModel())->update($id, ['filepath' => $newDatabasePath, 'last_action' => 'updated', 'last_action_at' => gmdate('Y-m-d H:i:s')]);
         } catch (\Throwable) {
-            @rename($newPath, (string) $file['filepath']);
+            @rename($newPath, $oldPhysicalPath);
 
             return $this->error('persistence_error', 'The file move was reverted because its database record could not be saved.', 500);
         }
@@ -326,16 +359,10 @@ class FileController extends ApiController
         }
 
         $actor = $this->actor();
-        $db    = db_connect();
-        $db->transStart();
-        (new FileModel())->update($id, ['is_deleted' => 1, 'last_action' => 'moved_to_trash', 'last_action_at' => gmdate('Y-m-d H:i:s')]);
-        $trash = $db->table('trashfiles');
-        if ($trash->where('file_id', $id)->countAllResults() === 0) {
-            $trash->insert(['file_id' => $id, 'deleted_by' => (int) $actor['employee_id'], 'reason' => 'Deleted through API']);
-        }
-        $db->transComplete();
-        if (! $db->transStatus()) {
-            return $this->error('persistence_error', 'The file could not be moved to trash.', 500);
+        try {
+            (new \App\Services\TrashService())->moveToTrash([$file], $actor, 'Deleted through API');
+        } catch (\Throwable $exception) {
+            return $this->error('storage_error', $exception instanceof RuntimeException ? $exception->getMessage() : 'The file could not be moved to Trash.', 409);
         }
 
         service('audit')->record($actor, $this->request, 'delete', 'DELETE', 'file', $id, 'Moved "' . $file['filename'] . '" to trash.');
@@ -356,13 +383,10 @@ class FileController extends ApiController
             return $this->error('not_trashed', 'The file is not in trash.', 409);
         }
 
-        $db = db_connect();
-        $db->transStart();
-        (new FileModel())->update($id, ['is_deleted' => 0, 'last_action' => 'restored', 'last_action_at' => gmdate('Y-m-d H:i:s')]);
-        $db->table('trashfiles')->where('file_id', $id)->delete();
-        $db->transComplete();
-        if (! $db->transStatus()) {
-            return $this->error('persistence_error', 'The file could not be restored.', 500);
+        try {
+            (new \App\Services\TrashService())->restoreMedia($file);
+        } catch (\Throwable $exception) {
+            return $this->error('storage_error', $exception instanceof RuntimeException ? $exception->getMessage() : 'The file could not be restored.', 409);
         }
 
         service('audit')->record($this->actor(), $this->request, 'delete', 'RESTORE', 'file', $id, 'Restored "' . $file['filename'] . '" from trash.');
@@ -377,7 +401,7 @@ class FileController extends ApiController
             return $this->error('not_found', 'The requested file does not exist.', 404);
         }
         try {
-            $path = service('storage')->resolveDatabaseFile((string) $file['filepath']);
+            $path = service('storage')->resolveDatabaseFile($this->storedPathForActor($file));
         } catch (RuntimeException $exception) {
             return $this->error('file_unavailable', $exception->getMessage(), 409);
         }
@@ -391,18 +415,22 @@ class FileController extends ApiController
     /** @return array<string, mixed>|null */
     private function findFile(int $id, bool $includeTrashed = false): ?array
     {
-        $query = new FileModel();
-        if (! $includeTrashed) {
-            $query->where('is_deleted', 0);
-        }
+        $query = $this->actorFileModel();
+        if (!$includeTrashed) $query->where('is_deleted', 0);
+        return $query->find($id);
+    }
 
-        $file = $query->find($id);
+    private function actorFileModel(): FileModel
+    {
+        $model = new FileModel();
         $actor = $this->actor();
-        if ($file !== null && (string) ($actor['role'] ?? '') === 'department') {
-            $assigned = db_connect()->table('media_assignments')->where('media_id', $id)->where('department', (string) ($actor['department'] ?? ''))->countAllResults() > 0;
-            return $assigned ? $file : null;
-        }
-        return $file;
+        if (($actor['role'] ?? '') === 'department') $model->setTable('department_files')->where('department', (string)($actor['department'] ?? ''));
+        return $model;
+    }
+
+    private function storedPathForActor(array $file): string
+    {
+        return (string)($file['filepath'] ?? '');
     }
 
     /** @param array<string, mixed> $file */
@@ -426,7 +454,7 @@ class FileController extends ApiController
             'release_status'=> $file['release_status'] ?? 'published',
             'last_action'   => $file['last_action'],
             'last_action_at'=> $file['last_action_at'],
-            'storage_path'  => service('storage')->relativePath((string) $file['filepath']),
+            'storage_path'  => service('storage')->relativePath($this->storedPathForActor($file)),
             'download_url'  => site_url('api/v1/files/' . $file['id'] . '/download'),
         ];
     }

@@ -1,6 +1,13 @@
 # Disable directory browsing
 Options -Indexes
 
+# Remove upload size caps for this application under Apache/XAMPP.
+LimitRequestBody 0
+<IfModule php_module>
+    php_value upload_max_filesize 0
+    php_value post_max_size 0
+</IfModule>
+
 # ----------------------------------------------------------------------
 # Rewrite engine
 # ----------------------------------------------------------------------

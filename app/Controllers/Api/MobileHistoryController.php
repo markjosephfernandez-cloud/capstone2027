@@ -15,14 +15,27 @@ class MobileHistoryController extends ApiController
         $progress = $this->input()['progress_seconds'] ?? null;
         $progress = is_numeric($progress) ? max(0, (int) $progress) : null;
         $db = db_connect();
-        $db->table('mobile_watch_history')->insert([
-            'file_id' => (int) $file['id'],
-            'user_employee_id' => (int) $this->actor()['employee_id'],
-            'progress_seconds' => $progress,
-            'watched_at' => Time::now('UTC')->toDateTimeString(),
-        ]);
-
-        return $this->success(['id' => (int) $db->insertID()], 201);
+        $userId = (int) $this->actor()['employee_id'];
+        $fileId = (int) $file['id'];
+        $db->transStart();
+        // Serialize repeat plays of this file, including simultaneous requests.
+        $db->query('SELECT id FROM files WHERE id = ? FOR UPDATE', [$fileId]);
+        $existing = $db->table('mobile_watch_history')->where('user_employee_id', $userId)
+            ->where('file_id', $fileId)->orderBy('watched_at', 'DESC')->orderBy('id', 'DESC')->get(1)->getRowArray();
+        $data = ['file_id' => $fileId, 'user_employee_id' => $userId,
+            'progress_seconds' => $progress, 'watched_at' => Time::now('UTC')->toDateTimeString()];
+        if ($existing) {
+            $id = (int) $existing['id'];
+            $db->table('mobile_watch_history')->where('id', $id)->update($data);
+            $db->table('mobile_watch_history')->where('user_employee_id', $userId)
+                ->where('file_id', $fileId)->where('id !=', $id)->delete();
+        } else {
+            $db->table('mobile_watch_history')->insert($data);
+            $id = (int) $db->insertID();
+        }
+        $db->transComplete();
+        if (! $db->transStatus()) return $this->error('history_failed', 'Could not save watch history.', 500);
+        return $this->success(['id' => $id], 201);
     }
 
     public function download()
@@ -75,20 +88,24 @@ class MobileHistoryController extends ApiController
             'id' => $fileId,
             'is_deleted' => 0,
             'release_status' => 'published',
-        ])->first();
+        ])->where('app_published_at IS NOT NULL', null, false)->first();
     }
 
     /** @return list<array<string, mixed>> */
     private function history(string $table, string $timestamp, string $extraColumn): array
     {
-        $rows = db_connect()->table($table . ' h')
+        $query = db_connect()->table($table . ' h')
             ->select("h.id, h.file_id, h.{$extraColumn}, h.{$timestamp}, f.filename, f.display_title, f.filetype, f.media_kind")
             ->join('files f', 'f.id=h.file_id')
             ->where('h.user_employee_id', (int) $this->actor()['employee_id'])
             ->where('f.is_deleted', 0)
-            ->where('f.release_status', 'published')
-            ->orderBy('h.' . $timestamp, 'DESC')
-            ->limit(200)
+            ->where('f.release_status', 'published')->where('f.app_published_at IS NOT NULL', null, false)
+            ->orderBy('h.' . $timestamp, 'DESC')->orderBy('h.id', 'DESC');
+        if ($table === 'mobile_watch_history') {
+            // Keep only the most recent play per account/video, before pagination.
+            $query->where('NOT EXISTS (SELECT 1 FROM mobile_watch_history newer WHERE newer.user_employee_id = h.user_employee_id AND newer.file_id = h.file_id AND (newer.watched_at > h.watched_at OR (newer.watched_at = h.watched_at AND newer.id > h.id)))', null, false);
+        }
+        $rows = $query->limit(200)
             ->get()->getResultArray();
 
         foreach ($rows as &$row) {

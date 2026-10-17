@@ -13,7 +13,7 @@ class AuditService
     }
 
     /** @param array<string, mixed> $actor */
-    public function record(array $actor, IncomingRequest $request, string $module, string $action, string $targetType, ?int $targetId, string $description): void
+    public function record(array $actor, ?IncomingRequest $request, string $module, string $action, string $targetType, ?int $targetId, string $description): void
     {
         if (! $this->db->tableExists('audit_logs')) {
             return;
@@ -28,7 +28,7 @@ class AuditService
             'target_type' => $targetType,
             'target_id'   => $targetId,
             'description' => $description,
-            'ip_address'  => $request->getIPAddress(),
+            'ip_address'  => null,
             'created_at'  => Time::now('UTC')->toDateTimeString(),
         ];
 

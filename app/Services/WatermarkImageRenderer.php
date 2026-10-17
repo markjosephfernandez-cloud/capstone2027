@@ -32,8 +32,8 @@ final class WatermarkImageRenderer
         $height = imagesy($image);
         $logoWidth = imagesx($logo);
         $logoHeight = imagesy($logo);
-        $scale = max(50, min(200, (int) ($settings['resize_percent'] ?? 100)));
-        $targetWidth = max(48, min(900, (int) round($width * 0.18 * $scale / 100)));
+        $scale = max(10, min(200, (int) ($settings['resize_percent'] ?? 100)));
+        $targetWidth = max(1, min(900, (int) round($width * 0.18 * $scale / 100)));
         $targetHeight = max(1, (int) round($targetWidth * $logoHeight / max(1, $logoWidth)));
         if ($targetHeight > $height * 0.35) {
             $targetHeight = max(32, (int) round($height * 0.35));

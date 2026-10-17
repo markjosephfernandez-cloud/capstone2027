@@ -4,7 +4,7 @@ l# Greyhound Hub: Complete AI Project Context
 
 ## 1. Project in one paragraph
 
-Greyhound Hub is Foundation University's digital asset management and publishing system. It combines a CodeIgniter 4 web administration application and versioned REST API, an Expo/React Native media-browsing app, and a local Python/TensorFlow event-classification service. Staff upload and organize institutional images, videos, audio, and documents; the backend creates provenance passports, applies optional branded watermarks, runs AI event classification, sends publishable media through staged approval, maintains audit and privacy records, and exposes approved content to the mobile app. A previous flat-PHP application and a previous Express/MySQL mobile server remain in the repository as migration references, not as the desired production architecture.
+Greyhound Hub is Foundation University's digital asset management and publishing system. It combines a CodeIgniter 4 web administration application and versioned REST API, an Expo/React Native media-browsing app, and a local Python/TensorFlow event-classification service. Staff upload and organize institutional images, videos, audio, and documents; the backend creates provenance passports, applies optional branded watermarks, runs AI event classification, sends publishable media through staged approval, maintains audit and privacy records, and exposes approved content to the mobile app. The previous flat-PHP application has been retired to a local archive in `writable/backups/`; old Express/MySQL server files still exist in the mobile project as reference code.
 
 ## 2. Vocabulary and product intent
 
@@ -12,7 +12,7 @@ Greyhound Hub is Foundation University's digital asset management and publishing
 - **Admin/web app**: the server-rendered CodeIgniter interface used by administrators and staff.
 - **API**: the CodeIgniter JSON interface under `/api/v1`.
 - **Mobile app**: the Expo/React Native client in `greyhound-app-2025-main/`.
-- **AI service**: the local ResNet-50 HTTP inference process in `greyhound-hub-2.0/`.
+- **AI service**: the local ConvNeXt HTTP inference process in `greyhound-hub-2.0/`.
 - **Media/file**: the canonical database record in `files` and its storage object.
 - **Folder**: a hierarchical logical/storage container.
 - **Passport**: provenance, rights, AI, approval, and integrity metadata associated with a media item. It is not currently a formally signed C2PA manifest.
@@ -32,8 +32,8 @@ The architectural goal is one canonical database (`last_fm`), one user identity,
 | `tests/` | PHPUnit tests and support code | Active but currently sparse |
 | `docs/` | Architecture and project documentation | Informational; distinguish proposals from code |
 | `greyhound-app-2025-main/` | Expo 54 / React Native 0.81 mobile app; also contains old Node servers | Mobile client active; embedded Express servers are legacy/reference |
-| `greyhound-hub-2.0/` | TensorFlow training, testing, inference server, models, dataset | Active optional AI subsystem |
-| `legacy/` | Original flat-PHP application, SQL dumps, migration/reference scripts | Reference/migration source only |
+| `greyhound-hub-2.0/` | PyTorch ConvNeXt inference, legacy TensorFlow training, models, dataset | Active optional AI subsystem |
+| `database/bootstrap/` | Schema-only baseline and addon setup SQL | Fresh database setup |
 | `Department Logo/` | FU, CCS, CBA, CHM, and CN watermark logos | Source assets |
 | `.env` | Local secrets and machine-specific configuration | Never copy into prompts/docs/commits |
 | `env.example` | Safe configuration template | Canonical setup reference |
@@ -271,14 +271,23 @@ Some helpers retain comments or functions for old `/albums` and `/history/*` beh
 
 ## 11. AI event-classification subsystem
 
-`greyhound-hub-2.0/api_server.py` loads `greyhound_events_model.keras`, reconstructing the training architecture before loading weights to bridge Keras serialization-version differences. It exposes:
+`greyhound-hub-2.0/api_server.py` loads `convnext_event_classifier.pth` through
+`event_classifier.py` (torchvision ConvNeXt Tiny, CPU inference). It exposes:
 
 - `GET http://127.0.0.1:5001/health`
-- `POST http://127.0.0.1:5001/predict` as multipart form data with a `media` part
+- `POST http://127.0.0.1:5001/predict` with multipart `media`
 
-Current model class order is fixed as `dal-uy`, `graduation`, `kasadyaan`, mapped to display names. Changing order without retraining breaks predictions. Confidence below the default 80% returns `event_name: null` while retaining predicted class probabilities as evidence. Environment variables `GREYHOUND_AI_HOST`, `GREYHOUND_AI_PORT`, and `GREYHOUND_AI_MIN_CONFIDENCE` configure the service.
+Class order is read and validated from checkpoint metadata. The eight outputs
+cover Digital EXPO, Graduation, Kasadyaan, Hara, Parada, Pasundayag, Dal-uy, and
+Intramurals; PHP accepts the mapped labels in `GreyhoundAi.php`. Confidence below
+80% returns a null event with evidence and must remain flagged for review.
+Failed inference falls back to a separately identified keyword baseline, never
+to the old ResNet weights. Existing database classifications are not rewritten.
 
-The CodeIgniter integration endpoint/timeout and allowed event names live in `app/Config/GreyhoundAi.php` and environment configuration. Documentation elsewhere mentions EXPO, but the deployed Python model shown in code has three output neurons and does **not** currently include EXPO. Treat this as a known model/product mismatch. Adding a class requires a correctly split dataset, retraining, deploying a matching model, updating the fixed inference architecture/class mapping, and aligning backend accepted labels.
+The checkpoint lacks preprocessing metadata. The current provisional transform
+is torchvision's ConvNeXt Tiny standard (resize 236, center crop 224, ImageNet
+normalization); confirm against the original training code. See the AI README
+for launch commands, dependency pins, and environment overrides.
 
 The service has no authentication, request-size control, or production process supervisor in its own implementation; keep it loopback/internal behind the backend. Image decoding failures return 422; unexpected inference failures return 500. Backend fallback behavior is intentional.
 
@@ -299,7 +308,7 @@ Never include real `.env` values in AI context. Required categories from `env.ex
 ### Backend setup
 
 1. Install PHP 8.2+, Composer dependencies, MySQL/MariaDB, and required PHP extensions.
-2. Import `legacy/database/last_fm (2).sql` for a fresh compatible baseline. Import `legacy/database/2026_addon_migration.sql` only where required by the baseline/setup instructions; migrations remain the forward schema authority.
+2. Import `database/bootstrap/base-schema.sql` for a fresh compatible baseline. Import `database/bootstrap/addons.sql` only where required by the baseline/setup instructions; migrations remain the forward schema authority.
 3. Copy `env.example` to `.env` and supply local values. Do not commit it.
 4. Run `php spark migrate`.
 5. Run `php spark serve` for development, or configure Apache with `public/` as document root.
@@ -331,7 +340,7 @@ Set the app's API URL to the CodeIgniter `/api/v1` base reachable from the emula
 
 ### AI setup
 
-Use a Python version compatible with the pinned/installed TensorFlow build, create a virtual environment, install TensorFlow and documented scientific dependencies, then run `python api_server.py` from `greyhound-hub-2.0/`. Model files are large Git LFS assets. Verify `/health` before relying on trained inference.
+Use Python 3.11, create a virtual environment, install `greyhound-hub-2.0/requirements-inference.txt`, then run `python api_server.py` from `greyhound-hub-2.0/`. Model files are large Git LFS assets. Verify `/health` before relying on trained inference.
 
 ## 13. Testing and validation
 
@@ -369,7 +378,7 @@ High-value mobile tests: auth persistence/expiry, endpoint adapters, empty/error
 2. Existing architecture prose includes proposed endpoints/schema that exceed current implementation. Always verify against routes and migrations.
 3. Mobile compatibility adapters still use album terminology and retain old history helpers/comments.
 4. Current Python inference supports three classes, while broader product text sometimes names EXPO as a fourth/alternative event.
-5. Confidence thresholds differ across older prose (80% versus 90%); runtime configuration/code is authoritative.
+5. iFound uses an 80% confidence gate, then compares confident predictions against the dominant event in the same folder. See `docs/ifound-classification.md` for ties, scope, and manual review behavior.
 6. Passport integrity is SHA-256 metadata, not trusted C2PA signing.
 7. Automated tests are far below the risk surface.
 8. API management coverage does not yet expose every web capability.
@@ -419,7 +428,7 @@ A backend feature is done when its route, authorization, validation, service/dom
 - Mobile navigation/screens: `greyhound-app-2025-main/navigation/`, `screens/`
 - Mobile API/config/auth: `greyhound-app-2025-main/api/server.js`, `utils/`
 - AI inference/training: `greyhound-hub-2.0/api_server.py`, `train_model.py`, `test_model.py`
-- Legacy schema/source: `legacy/database/`, `legacy/`
+- Bootstrap schema: `database/bootstrap/`; retired source is archived locally in `writable/backups/`.
 - Detailed consolidation proposal: `docs/mobile-integration-architecture.md`
 
 ## 19. Suggested prompt to accompany this file

@@ -21,6 +21,9 @@
   var liveSearchTimers = new WeakMap();
   var composingSearchForms = new WeakSet();
   var ajaxMutationRoutes = [
+    /\/workspace\/server-library\/folders\/(?:create|[a-f0-9]+\/(?:rename|delete))\/?$/i,
+    /\/workspace\/server-library\/(?:tags|bulk-trash|post-selection|duplicates\/restore-selected)\/?$/i,
+    /\/workspace\/server-library\/items\/[a-f0-9]+\/trash\/?$/i,
     /\/admin\/users(?:\/\d+\/(?:update|toggle|reset-password|revoke-tokens))?\/?$/i,
     /\/admin\/maintenance\/(?:consent-reminders|purge-expired-trash)\/?$/i,
     /\/privacy\/consent\/?$/i,
@@ -97,7 +100,7 @@
       if (alert.parentNode) {
         alert.remove();
       }
-    }, 6000);
+    }, 5000);
   }
 
   function actionUrl(form, submitter) {
@@ -223,6 +226,7 @@
   }
 
   function replacePage(html, destination, options) {
+    if (window.greyhoundIFoundAnalysisCleanup) { window.greyhoundIFoundAnalysisCleanup(); window.greyhoundIFoundAnalysisCleanup = null; }
     var parsed = new DOMParser().parseFromString(html, 'text/html');
     if (!parsed.body || !parsed.querySelector('#main')) {
       throw new Error('The server returned a page that cannot be displayed inside the application.');
@@ -237,6 +241,25 @@
     });
 
     var importedBody = document.importNode(parsed.body, true);
+    // Apply the current layout while the new page is still detached.
+    var currentMedia = document.querySelector('.media-workspace[data-media-layout]');
+    var incomingMedia = importedBody.querySelector('.media-workspace');
+    if (currentMedia && incomingMedia) {
+      var mediaLayout = currentMedia.dataset.mediaLayout;
+      if (mediaLayout === 'list' || mediaLayout === 'grid') {
+        incomingMedia.dataset.mediaLayout = mediaLayout;
+      }
+    }
+    if (window.GreyhoundUploadSession) {
+      window.GreyhoundUploadSession.beforeReplace(importedBody);
+    }
+    if (typeof window.greyhoundServerLibraryCleanup === 'function') {
+      window.greyhoundServerLibraryCleanup();
+      window.greyhoundServerLibraryCleanup = null;
+    }
+    if (window.greyhoundIFoundScanBeforeReplace) window.greyhoundIFoundScanBeforeReplace(importedBody);
+    if (window.GreyhoundPassportScan) window.GreyhoundPassportScan.beforeReplace(importedBody);
+    if (window.GreyhoundFolderMove) window.GreyhoundFolderMove.beforeReplace(importedBody);
     document.body.replaceWith(importedBody);
     if (parsed.title) {
       document.title = parsed.title;
@@ -253,6 +276,7 @@
       window.GreyhoundMainInit();
     }
     executePageScripts(scripts);
+    if (window.GreyhoundSearch) window.GreyhoundSearch.init();
 
     if (options.preserveScroll) {
       window.scrollTo(0, options.scrollY || 0);
@@ -279,7 +303,22 @@
   }
 
   async function load(requestUrl, requestOptions, pageOptions) {
+    // Stop connection/health polling before navigation competes for a PHP worker.
+    if (typeof window.greyhoundServerLibraryCleanup === 'function') {
+      window.greyhoundServerLibraryCleanup();
+      window.greyhoundServerLibraryCleanup = null;
+    }
+    if (typeof window.greyhoundAdminHealthCleanup === 'function') {
+      window.greyhoundAdminHealthCleanup();
+      window.greyhoundAdminHealthCleanup = null;
+    }
+    if (typeof window.greyhoundCatalogLiveCleanup === 'function') window.greyhoundCatalogLiveCleanup();
+    if (typeof window.greyhoundThumbnailCleanup === 'function') window.greyhoundThumbnailCleanup();
     var sequence = ++requestSequence;
+    // Release background share requests before fetching the next page.
+    if (typeof window.greyhoundServerLibraryBeforeNavigate === 'function') {
+      window.greyhoundServerLibraryBeforeNavigate(requestUrl);
+    }
     if (activeController) {
       activeController.abort();
     }
@@ -308,6 +347,9 @@
         throw new Error('The requested action returned an unsupported response.');
       }
       var html = await response.text();
+      if (sequence !== requestSequence) {
+        return;
+      }
       var destination = new URL(response.url || requestUrl.href, window.location.href);
       if (!destination.hash && requestUrl.hash) {
         destination.hash = requestUrl.hash;
@@ -318,6 +360,9 @@
       }
       replacePage(html, destination, pageOptions);
     } catch (error) {
+      if (sequence === requestSequence && typeof window.greyhoundServerLibraryNavigationFailed === 'function') {
+        window.greyhoundServerLibraryNavigationFailed();
+      }
       if (error && error.name === 'AbortError') {
         return;
       }
@@ -343,12 +388,25 @@
       return;
     }
     event.preventDefault();
+    if (link.hasAttribute('data-search-clear')) {
+      var searchField = link.closest('[data-search-reset]');
+      var searchInput = searchField && searchField.querySelector('input[type="search"]');
+      if (searchInput) searchInput.value = '';
+      link.hidden = true;
+    }
     var url = new URL(link.href, window.location.href);
-    load(url, { method: 'GET' }, { history: 'push', preserveScroll: false }).catch(function () {});
+    load(url, { method: 'GET' }, {
+      history: 'push',
+      preserveScroll: link.hasAttribute('data-ajax-preserve-scroll'),
+      scrollY: window.scrollY,
+      focusId: searchInput ? searchInput.id : '',
+      focusName: searchInput ? searchInput.name : ''
+    }).catch(function () {});
   });
 
   document.addEventListener('submit', function (event) {
     if (event.defaultPrevented) {
+      lastSubmitter = null;
       return;
     }
     var form = event.target;
@@ -359,12 +417,20 @@
     }
 
     event.preventDefault();
+    // A manual submission replaces any pending live-search submission.
+    var pendingSearch = liveSearchTimers.get(form);
+    if (pendingSearch !== undefined) {
+      window.clearTimeout(pendingSearch);
+      liveSearchTimers.delete(form);
+    }
     var method = formMethod(form, submitter);
     var url = actionUrl(form, submitter);
     var request = { method: method };
     var scrollY = window.scrollY;
     var activeElement = document.activeElement;
     var restoreLiveSearchFocus = method === 'GET' && form.matches('[data-ajax-live-search]') && activeElement && form.contains(activeElement);
+    var searchInput = method === 'GET' && form.matches('[data-ajax-preserve-scroll]')
+      ? form.querySelector('input[type="search"]') : null;
 
     if (method === 'GET') {
       url = buildGetUrl(url, form, submitter);
@@ -381,12 +447,12 @@
 
     load(url, request, {
       history: method === 'GET' ? 'push' : 'replace',
-      preserveScroll: method !== 'GET',
+      preserveScroll: method !== 'GET' || form.id === 'mediaFilterForm' || form.matches('[data-ajax-preserve-scroll]'),
       scrollY: scrollY,
-      focusId: restoreLiveSearchFocus ? activeElement.id : '',
-      focusName: restoreLiveSearchFocus ? activeElement.getAttribute('name') : '',
-      focusCaret: restoreLiveSearchFocus && typeof activeElement.selectionStart === 'number' ? activeElement.selectionStart : null
-    }).catch(function () {
+      focusId: searchInput ? searchInput.id : (restoreLiveSearchFocus ? activeElement.id : ''),
+      focusName: searchInput ? searchInput.name : (restoreLiveSearchFocus ? activeElement.getAttribute('name') : ''),
+      focusCaret: searchInput ? searchInput.value.length : (restoreLiveSearchFocus && typeof activeElement.selectionStart === 'number' ? activeElement.selectionStart : null)
+    }).catch(function () {}).finally(function () {
       form.removeAttribute('aria-busy');
       if (submitter) {
         submitter.disabled = false;
@@ -421,6 +487,9 @@
     updateLiveSearchStatus(form, delay === 0 ? 'Updating results…' : 'Waiting for you to finish typing…', true);
     var timer = window.setTimeout(function () {
       liveSearchTimers.delete(form);
+      if (!form.isConnected) {
+        return;
+      }
       updateLiveSearchStatus(form, 'Searching…', true);
       if (typeof form.requestSubmit === 'function') {
         form.requestSubmit();
@@ -442,16 +511,19 @@
     var form = liveSearchForm(event.target);
     if (form) {
       composingSearchForms.delete(form);
-      scheduleLiveSearch(form, false);
+      // Text searches require Enter or an explicit suggestion selection.
     }
   });
 
   document.addEventListener('input', function (event) {
+    var searchField = event.target instanceof Element && event.target.closest('[data-search-reset]');
+    var clearLink = searchField && searchField.querySelector('[data-search-clear]');
+    if (clearLink) clearLink.hidden = event.target.value.length === 0;
     var form = liveSearchForm(event.target);
     if (!form || composingSearchForms.has(form) || !event.target.matches('input[type="search"], input[type="text"], input:not([type])')) {
       return;
     }
-    scheduleLiveSearch(form, false);
+    // Typing only updates suggestions; it never submits results.
   });
 
   document.addEventListener('change', function (event) {
@@ -471,8 +543,15 @@
   ensureUi();
 
   window.GreyhoundAjax = {
+    cancel: function () {
+      ++requestSequence;
+      if (activeController) activeController.abort();
+      activeController = null;
+      finishProgress();
+    },
     refresh: function (options) {
       options = options || {};
+      if (options.ifIdle && activeController) return Promise.resolve();
       var url = new URL(window.location.href);
       return load(url, { method: 'GET' }, {
         history: 'replace',

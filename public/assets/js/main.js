@@ -17,6 +17,10 @@
   window.GreyhoundMainAbortController = mainAbortController;
   const listenerOptions = mainAbortController ? { signal: mainAbortController.signal } : false;
 
+  if (window.GreyhoundNotifications) {
+    window.GreyhoundNotifications.init();
+  }
+
   /**
    * Easy selector helper function
    */

@@ -18,7 +18,7 @@ class EventDetectionService
     }
 
     /** @param array<string, mixed> $file @return array<string, mixed> */
-    public function classifyAndStore(array $file): array
+    public function classifyAndStore(array $file, bool $requireTrainedModel = false): array
     {
         $started = hrtime(true);
         $text    = mb_strtolower(implode(' ', [
@@ -27,6 +27,9 @@ class EventDetectionService
             (string) ($file['tags'] ?? ''),
         ]));
         $remote = $this->trainedModelResult($file);
+        if ($requireTrainedModel && ($remote === null || $remote['detector_version'] !== $this->config->modelVersion)) {
+            throw new \RuntimeException('ConvNeXt image analysis is unavailable. The upload is saved; retry analysis when the AI service is running.');
+        }
         $event = $remote['event_name'] ?? null;
         $evidence = $remote['evidence'] ?? [];
 
@@ -44,18 +47,18 @@ class EventDetectionService
             }
         }
 
-        $confidence = $remote['confidence_score'] ?? ($event === null ? 0.0 : (count($evidence) > 1 ? 98.0 : 92.0));
-        $needsReview = $confidence < $this->config->reviewThreshold;
+        // Filename evidence is a suggestion, never an AI confidence score.
+        $confidence = $remote['confidence_score'] ?? 0.0;
+        $needsReview = $event === null || $confidence < $this->config->reviewThreshold;
         $classification = $event ?? 'Unclassified university media';
-        $detectedObjects = $event === null ? null : 'event: ' . $event;
-        $automaticTags = $this->automaticTags($file, $event, $needsReview);
-        $tags = $this->mergeTags((string) ($file['tags'] ?? ''), $automaticTags);
+        $automaticTags = $this->automaticTags($file, $event);
+        $tags = $this->mergeTags(\App\Libraries\MediaTagPolicy::clean((string) ($file['tags'] ?? ''), $file), $automaticTags);
         $durationMs = (int) max(1, round((hrtime(true) - $started) / 1_000_000));
         $result = [
             'event_name'       => $event,
             'classification'   => $classification,
             'confidence_score' => $confidence,
-            'detector_version' => $remote['detector_version'] ?? $this->config->modelVersion,
+            'detector_version' => $remote['detector_version'] ?? 'greyhound-keyword-baseline',
             'evidence'         => $evidence,
             'needs_review'     => $needsReview,
             'processing_time_ms' => $durationMs,
@@ -63,7 +66,6 @@ class EventDetectionService
 
         (new FileModel())->update((int) $file['id'], [
             'classification'   => $classification,
-            'detected_objects' => $detectedObjects,
             'tags'             => $tags,
             'last_scanned'     => gmdate('Y-m-d H:i:s'),
         ]);
@@ -91,6 +93,26 @@ class EventDetectionService
         return $result;
     }
 
+    /** Analyze a validated server upload without creating a local media copy. */
+    public function analyzeFile(string $physicalPath, string $filename, string $folder): array
+    {
+        $started = hrtime(true);
+        $remote = $this->trainedModelResult(['filename'=>$filename], $physicalPath);
+        $event = $remote['event_name'] ?? null;
+        if ($remote === null) {
+            foreach ($this->config->eventKeywords as $name=>$keywords) {
+                foreach ($keywords as $keyword) if (str_contains(mb_strtolower($filename . ' ' . $folder), mb_strtolower($keyword))) { $event = $name; break 2; }
+            }
+        }
+        $confidence = $remote['confidence_score'] ?? 0.0;
+        return [
+            'event_name'=>$event, 'classification'=>$event ?? 'Unclassified university media',
+            'confidence_score'=>$confidence, 'needs_review'=>$event === null || $confidence < $this->config->reviewThreshold,
+            'detector_version'=>$remote['detector_version'] ?? 'greyhound-keyword-baseline',
+            'evidence'=>$remote['evidence'] ?? [], 'processing_time_ms'=>(int)((hrtime(true)-$started)/1e6),
+        ];
+    }
+
     /** @param list<string> $automaticTags */
     private function mergeTags(string $current, array $automaticTags): string
     {
@@ -110,7 +132,7 @@ class EventDetectionService
     }
 
     /** @param array<string, mixed> $file @return list<string> */
-    private function automaticTags(array $file, ?string $event, bool $needsReview): array
+    private function automaticTags(array $file, ?string $event): array
     {
         $extension = strtoupper((string) pathinfo((string) ($file['filename'] ?? ''), PATHINFO_EXTENSION));
         $extension = $extension !== '' ? $extension : 'UNKNOWN';
@@ -118,17 +140,11 @@ class EventDetectionService
         $year = preg_match('/^(\d{4})/', $date, $matches) === 1 ? $matches[1] : gmdate('Y');
 
         $tags = [
-            'Media: ' . $this->mediaCategory($extension),
-            'Format: ' . $extension,
-            'Year: ' . $year,
+            $year,
         ];
         if ($event !== null) {
             $tags[] = $event;
-            $tags[] = 'AI Classified';
             $tags[] = 'University Event';
-        }
-        if ($needsReview) {
-            $tags[] = 'AI Review Needed';
         }
 
         $folderId = filter_var($file['folder_id'] ?? null, FILTER_VALIDATE_INT);
@@ -136,7 +152,7 @@ class EventDetectionService
             $folder = db_connect()->table('folder')->select('name')->where('id', $folderId)->where('is_deleted', 0)->get()->getRowArray();
             $name = trim((string) ($folder['name'] ?? ''));
             if ($name !== '') {
-                $tags[] = 'Folder: ' . $name;
+                $tags[] = $name;
             }
         }
 
@@ -185,7 +201,7 @@ class EventDetectionService
     }
 
     /** @param array<string, mixed> $file @return array<string, mixed>|null */
-    private function trainedModelResult(array $file): ?array
+    private function trainedModelResult(array $file, ?string $physicalPath = null): ?array
     {
         $endpoint = $this->config->eventModelEndpoint();
         if ($endpoint === '') {
@@ -193,7 +209,7 @@ class EventDetectionService
         }
 
         try {
-            $path = service('storage')->resolveDatabaseFile((string) ($file['filepath'] ?? ''));
+            $path = $physicalPath ?? service('storage')->resolveDatabaseFile((string) ($file['filepath'] ?? ''));
             if (! is_file($path) || ! is_readable($path)) {
                 return null;
             }
@@ -212,8 +228,8 @@ class EventDetectionService
             }
             $payload = json_decode($response->getBody(), true, 512, JSON_THROW_ON_ERROR);
             $event = $payload['event_name'] ?? null;
-            $confidence = isset($payload['confidence_score']) ? (float) $payload['confidence_score'] : null;
-            if (! is_string($event) || ! array_key_exists($event, $this->config->eventKeywords) || $confidence === null || $confidence < 0 || $confidence > 100) {
+            $confidence = is_numeric($payload['confidence_score'] ?? null) ? (float) $payload['confidence_score'] : null;
+            if (! array_key_exists('event_name', $payload) || ($event !== null && (! is_string($event) || ! array_key_exists($event, $this->config->eventKeywords))) || $confidence === null || ! is_finite($confidence) || $confidence < 0 || $confidence > 100) {
                 return null;
             }
 

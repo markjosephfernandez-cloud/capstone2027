@@ -3,6 +3,7 @@
 namespace App\Filters;
 
 use CodeIgniter\Filters\FilterInterface;
+use CodeIgniter\HTTP\IncomingRequest;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
 
@@ -19,6 +20,16 @@ class ApiCorsFilter implements FilterInterface
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
+        // Required after filters also run when authentication stops the request.
+        // Keep this policy limited to API routes, including subdirectory installs.
+        if (! $request instanceof IncomingRequest) {
+            return $response;
+        }
+        $path = trim($request->getUri()->getRoutePath(), '/');
+        if ($path !== 'api/v1' && ! str_starts_with($path, 'api/v1/')) {
+            return $response;
+        }
+
         return $this->applyHeaders($response, $request);
     }
 

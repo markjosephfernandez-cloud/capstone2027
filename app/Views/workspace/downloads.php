@@ -29,7 +29,7 @@
                                         <span><strong class="d-block"><?= esc($title) ?></strong><span class="small text-muted"><?= esc((string) ($file['filename'] ?? 'Media file')) ?></span></span>
                                     </div>
                                 </td>
-                                <td><?= esc(! empty($file['assigned_at']) ? date('M j, Y g:i A', strtotime((string) $file['assigned_at'])) : '-') ?></td>
+                                <td><?= esc(! empty($file['assigned_at']) ? \App\Libraries\DisplayTime::format($file['assigned_at'], 'M j, Y g:i A') : '-') ?></td>
                                 <td class="text-end"><a class="btn btn-primary btn-sm" href="<?= esc(site_url('workspace/file-management/' . $fileId . '/download')) ?>"><i class="bi bi-download me-1"></i>Download</a></td>
                             </tr>
                         <?php endforeach; ?>

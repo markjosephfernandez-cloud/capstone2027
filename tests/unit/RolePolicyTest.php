@@ -25,6 +25,20 @@ final class RolePolicyTest extends CIUnitTestCase
         $this->assertFalse(RolePolicy::allows($actor, 'files.manage'));
     }
 
+    public function testServerHealthEndpointRejectsNonSuperAdminRoles(): void
+    {
+        foreach (['admin', 'staff', 'writer', 'department'] as $role) {
+            $session = $this->createMock(\CodeIgniter\Session\Session::class);
+            $actor = ['isLoggedIn'=>true, 'role'=>$role];
+            $session->method('get')->willReturnCallback(static fn ($key = null) => $key === null ? $actor : ($actor[$key] ?? null));
+            $session->expects($this->never())->method('close');
+            \Config\Services::injectMock('session', $session);
+            $response = (new \App\Controllers\Web\AdminController())->serverHealth();
+            $this->assertInstanceOf(\CodeIgniter\HTTP\RedirectResponse::class, $response);
+            $this->assertStringEndsWith('/dashboard', $response->getHeaderLine('Location'));
+        }
+    }
+
     public function testSuperAdminOverridesEveryPermission(): void
     {
         $this->assertTrue(RolePolicy::allows(['role' => 'super_admin'], 'system.any_permission'));

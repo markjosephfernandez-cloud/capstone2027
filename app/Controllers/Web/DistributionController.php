@@ -29,16 +29,22 @@ class DistributionController extends BaseController
             ->join('user requester', 'requester.employee_id = r.requested_by', 'left')
             ->join('user transmitter', 'transmitter.employee_id = r.transmitted_by', 'left')
             ->join('media_assignments ma', 'ma.request_id = r.id', 'left');
+        $requests->where('r.transaction_type', 'request');
         if ($role === 'department') {
             $requests->where('r.department', (string) ($actor['department'] ?? ''));
         }
         $requests = $requests->groupBy('r.id')->orderBy('r.updated_at', 'DESC')->limit(100)->get()->getResultArray();
         $requestFiles = $this->requestFiles(array_map(static fn (array $request): int => (int) $request['id'], $requests));
-        $direct = $db->table('media_assignments ma')->select('ma.department, ma.sent_by, ma.sent_at, ma.status, u.name AS sender_name, COUNT(*) AS file_count')->join('user u', 'u.employee_id = ma.sent_by', 'left')->where('ma.method', 'direct');
+        $direct = $db->table('media_requests r')
+            ->select('r.id, r.transaction_code, r.department, r.status, r.authorization_status, r.current_cycle, r.submitted_at AS sent_at, u.name AS sender_name, COUNT(DISTINCT ma.media_id) AS file_count')
+            ->join('user u', 'u.employee_id = r.original_sender', 'left')
+            ->join('media_assignments ma', 'ma.request_id = r.id', 'left')
+            ->where('r.transaction_type', 'direct');
         if ($role === 'department') {
-            $direct->where('ma.department', (string) ($actor['department'] ?? ''));
+            $direct->where('r.department', (string) ($actor['department'] ?? ''));
         }
-        $direct = $direct->groupBy('ma.department, ma.sent_by, ma.sent_at, ma.status, u.name')->orderBy('ma.sent_at', 'DESC')->limit(100)->get()->getResultArray();
+        $direct = $direct->groupBy('r.id, r.transaction_code, r.department, r.status, r.authorization_status, r.current_cycle, r.submitted_at, u.name')->orderBy('r.updated_at', 'DESC')->limit(100)->get()->getResultArray();
+        $requestFiles += $this->requestFiles(array_map(static fn (array $transaction): int => (int) $transaction['id'], $direct));
         $files = RolePolicy::allows($actor, 'files.assign') ? (new FileModel())->where('is_deleted', 0)->orderBy('dateupload', 'DESC')->findAll(500) : [];
         $folders = RolePolicy::allows($actor, 'files.assign') ? $db->table('folder fo')
             ->select('fo.id, fo.parent_id, fo.name, fo.path, COUNT(DISTINCT f.id) AS file_count, (SELECT COUNT(*) FROM folder child WHERE child.parent_id = fo.id AND child.is_deleted = 0) AS subfolder_count', false)
@@ -48,9 +54,66 @@ class DistributionController extends BaseController
             ->orderBy('fo.name', 'ASC')
             ->get()
             ->getResultArray() : [];
-        $departments = RolePolicy::allows($actor, 'files.assign') ? $db->table('user')->select('department')->where('department !=', '')->groupBy('department')->orderBy('department')->get()->getResultArray() : [];
-        $actions = $db->table('distribution_actions')->orderBy('created_at', 'DESC')->limit(200)->get()->getResultArray();
-        return view('distribution/index', ['user' => $actor, 'activePage' => 'distribution', 'title' => 'Distribution Workflow', 'requests' => $requests, 'requestFiles' => $requestFiles, 'directSends' => $direct, 'files' => $files, 'folders' => $folders, 'departments' => $departments, 'actions' => $actions, 'canManage' => RolePolicy::allows($actor, 'distribution.manage'), 'isDepartment' => $role === 'department', 'focusedRequestId' => $focusedRequestId, 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]);
+        $departments = RolePolicy::allows($actor, 'files.assign')
+            ? $db->table('user')->select('department')
+                ->where('role', 'department')
+                ->where('department !=', '')
+                ->groupBy('department')->orderBy('department')->get()->getResultArray()
+            : [];
+        $actionQuery = $db->table('distribution_actions')->orderBy('created_at', 'DESC')->limit(500);
+        if ($role === 'department') $actionQuery->where('department', (string) ($actor['department'] ?? ''));
+        $actions = $actionQuery->get()->getResultArray();
+        $historyByRequest = [];
+        foreach ($actions as $action) if (! empty($action['request_id'])) $historyByRequest[(int) $action['request_id']][] = $action;
+        foreach ($historyByRequest as &$requestHistory) {
+            $requestHistory = $this->withDisplayCycles($requestHistory);
+        }
+        unset($requestHistory);
+        return view('distribution/index', ['user' => $actor, 'activePage' => 'distribution', 'title' => 'Distribution Workflow', 'requests' => $requests, 'requestFiles' => $requestFiles, 'directSends' => $direct, 'files' => $files, 'folders' => $folders, 'departments' => $departments, 'actions' => $actions, 'historyByRequest' => $historyByRequest, 'canManage' => RolePolicy::allows($actor, 'distribution.manage'), 'isDepartment' => $role === 'department', 'focusedRequestId' => $focusedRequestId, 'success' => session()->getFlashdata('success'), 'error' => session()->getFlashdata('error')]);
+    }
+
+    /**
+     * Supplies reliable labels for legacy action rows whose cycle_number is zero.
+     * The returned order remains newest-first for the preview timeline.
+     *
+     * @param list<array<string, mixed>> $history
+     * @return list<array<string, mixed>>
+     */
+    private function withDisplayCycles(array $history): array
+    {
+        $cycle = 0;
+        $startNextCycle = true;
+
+        foreach (array_reverse(array_keys($history)) as $index) {
+            $action = strtolower((string) ($history[$index]['action'] ?? ''));
+            $storedCycle = max(0, (int) ($history[$index]['cycle_number'] ?? 0));
+
+            if ($action === 'submitted') {
+                $history[$index]['display_cycle'] = null;
+                $history[$index]['display_action'] = 'submitted';
+                continue;
+            }
+
+            if (in_array($action, ['original', 'resubmission', 'transmitted', 'direct_sent'], true)) {
+                if ($startNextCycle) {
+                    $cycle = max($cycle + 1, $storedCycle, 1);
+                } else {
+                    $cycle = max($cycle, $storedCycle, 1);
+                }
+                $startNextCycle = false;
+            } else {
+                $cycle = max($cycle, $storedCycle, 1);
+            }
+
+            $history[$index]['display_cycle'] = $cycle;
+            $history[$index]['display_action'] = $action === 'original' && $cycle > 1 ? 'resubmission' : $action;
+
+            if ($action === 'marked_incomplete') {
+                $startNextCycle = true;
+            }
+        }
+
+        return $history;
     }
 
     public function requestMedia()
@@ -89,27 +152,82 @@ class DistributionController extends BaseController
         if (session()->get('isLoggedIn') !== true || ! RolePolicy::allows($actor, 'requests.manage_own')) {
             return redirect()->to(site_url('workspace/distribution'))->with('error', 'Only the receiving department can complete this request.');
         }
+        try {
+            service('distribution')->authorize($requestId, $actor, (string) $this->request->getPost('feedback'));
+            service('audit')->record($actor, $this->request, 'distribution', 'TRANSACTION_AUTHORIZED', 'media_request', $requestId, 'Department confirmed the transaction complete with feedback.');
+            return redirect()->to(site_url('workspace/distribution?request=' . $requestId))->with('success', 'Transaction completed and authorized for Department File Management.');
+        } catch (RuntimeException $exception) {
+            return redirect()->to(site_url('workspace/distribution?request=' . $requestId))->with('error', $exception->getMessage());
+        }
+    }
+
+    public function incomplete(int $requestId)
+    {
+        $actor = session()->get();
+        if (session()->get('isLoggedIn') !== true || ! RolePolicy::allows($actor, 'requests.manage_own')) {
+            return redirect()->to(site_url('workspace/distribution'))->with('error', 'Only the receiving department can review this transaction.');
+        }
+        try {
+            service('distribution')->markIncomplete($requestId, $actor, (string) $this->request->getPost('feedback'));
+            service('audit')->record($actor, $this->request, 'distribution', 'TRANSACTION_INCOMPLETE', 'media_request', $requestId, 'Department marked the transaction incomplete with feedback.');
+            return redirect()->to(site_url('workspace/distribution?request=' . $requestId))->with('success', 'The Admin was notified that corrections are required.');
+        } catch (RuntimeException $exception) {
+            return redirect()->to(site_url('workspace/distribution?request=' . $requestId))->with('error', $exception->getMessage());
+        }
+    }
+
+    /** Serves media only inside an authorized transaction review. */
+    public function reviewPreview(int $requestId, int $fileId)
+    {
+        if (session()->get('isLoggedIn') !== true) return redirect()->to(site_url('login'));
+        $actor = session()->get();
         $db = db_connect();
-        $request = $db->table('media_requests')->where('id', $requestId)->where('department', (string) ($actor['department'] ?? ''))->where('status', 'transmitted')->get()->getRowArray();
-        if ($request === null) {
-            return redirect()->to(site_url('workspace/distribution'))->with('error', 'The transmitted request is unavailable.');
+        $request = $db->table('media_requests')->where('id', $requestId)->get()->getRowArray();
+        $allowed = $request !== null && (RolePolicy::allows($actor, 'distribution.manage') || (RolePolicy::allows($actor, 'requests.manage_own') && (string) $request['department'] === (string) ($actor['department'] ?? '')));
+        if (! $allowed || $db->table('media_assignments')->where('request_id', $requestId)->where('media_id', $fileId)->countAllResults() === 0) {
+            return $this->response->setStatusCode(403)->setBody('This file is not available in your transaction review.');
         }
-        $now = gmdate('Y-m-d H:i:s');
-        $count = (int) $db->table('media_assignments')->where('request_id', $requestId)->countAllResults();
-        $db->transStart();
-        $db->table('media_requests')->where('id', $requestId)->update(['status' => 'completed', 'completed_by' => (int) $actor['employee_id'], 'completed_at' => $now, 'updated_at' => $now]);
-        $db->table('media_assignments')->where('request_id', $requestId)->update(['status' => 'completed', 'completed_by' => (int) $actor['employee_id'], 'completed_at' => $now]);
-        if ($db->tableExists('media_assignment_folders')) {
-            $db->table('media_assignment_folders')->where('request_id', $requestId)->update([
-                'status' => 'completed',
-                'completed_by' => (int) $actor['employee_id'],
-                'completed_at' => $now,
-            ]);
+        $assignment = $db->table('media_assignments')->where('request_id',$requestId)->where('media_id',$fileId)->orderBy('id','DESC')->get()->getRowArray();
+        $file = ($assignment['status'] ?? '') === 'completed'
+            ? $db->table('department_files')->where('source_assignment_id',$assignment['id'])->where('department',$request['department'])->where('is_deleted',0)->get()->getRowArray()
+            : (new FileModel())->where('is_deleted', 0)->find($fileId);
+        if ((new \Config\Storage())->centralized() && $file && ($assignment['status'] ?? '') !== 'completed') {
+            $file['filepath'] = $assignment['delivery_filepath'] ?? '';
         }
-        $db->table('distribution_actions')->insert(['request_id' => $requestId, 'assignment_id' => null, 'action' => 'completed', 'actor_id' => (int) $actor['employee_id'], 'actor_name' => (string) $actor['name'], 'actor_role' => (string) $actor['role'], 'department' => (string) $actor['department'], 'file_count' => $count, 'created_at' => $now]);
-        $db->transComplete();
-        service('audit')->record($actor, $this->request, 'distribution', 'REQUEST_COMPLETED', 'media_request', $requestId, 'Completed receipt of ' . $count . ' assigned media file(s).');
-        return redirect()->to(site_url('workspace/distribution'))->with('success', 'Request marked completed.');
+        if ($file === null) return $this->response->setStatusCode(404)->setBody('File not found.');
+        try {
+            $path = service('storage')->resolveDatabaseFile((string) $file['filepath']);
+        } catch (RuntimeException) {
+            return $this->response->setStatusCode(404)->setBody('File not found.');
+        }
+        session()->close();
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
+        if ($this->request->getGet('thumbnail') === '1') {
+            try {
+                $thumbnail = is_string($mime) && str_starts_with($mime, 'video/')
+                    ? (new \App\Services\VideoPreviewService())->thumbnailForFile($path)
+                    : (new \App\Services\ThumbnailService())->forFile($path);
+                $etag = '"' . pathinfo($thumbnail, PATHINFO_FILENAME) . '"';
+                $response = $this->response->removeHeader('Cache-Control')->removeHeader('Pragma')->removeHeader('Expires')
+                    ->setHeader('Cache-Control', 'private, no-cache, must-revalidate')
+                    ->setHeader('Vary', 'Cookie')->setHeader('ETag', $etag)
+                    ->setHeader('X-Content-Type-Options', 'nosniff');
+                $validators = array_map('trim', explode(',', $this->request->getHeaderLine('If-None-Match')));
+                if (in_array($etag, $validators, true) || in_array('W/' . $etag, $validators, true) || in_array('*', $validators, true)) {
+                    return $response->setStatusCode(304)->setBody('');
+                }
+                $body = file_get_contents($thumbnail);
+                if ($body === false) throw new RuntimeException('Thumbnail unavailable.');
+                return $response->setContentType('image/jpeg')->setHeader('Content-Length', (string) strlen($body))->setBody($body);
+            } catch (RuntimeException $exception) {
+                log_message('warning', 'Transaction thumbnail unavailable: {message}', ['message' => $exception->getMessage()]);
+                return $this->response->setStatusCode(404)->setBody('Thumbnail unavailable.')->noCache();
+            }
+        }
+        if (! is_string($mime) || ! in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
+            return $this->response->setStatusCode(404)->setBody('Preview is unavailable for this file type.');
+        }
+        return $this->response->setHeader('Content-Type', $mime)->setHeader('Content-Disposition', 'inline')->setBody((string) file_get_contents($path))->noCache();
     }
 
     private function assignFromPost(string $method, ?int $requestId)
@@ -127,7 +245,7 @@ class DistributionController extends BaseController
         }
         $department = trim(mb_substr((string) $this->request->getPost('department'), 0, 150));
         if ($requestId !== null) {
-            $request = db_connect()->table('media_requests')->where('id', $requestId)->where('status', 'submitted')->get()->getRowArray();
+            $request = db_connect()->table('media_requests')->where('id', $requestId)->whereIn('status', ['submitted', 'pending_incomplete'])->get()->getRowArray();
             if ($request === null) {
                 return redirect()->to(site_url('workspace/distribution'))->with('error', 'This request has already been processed or is unavailable.');
             }
@@ -189,10 +307,13 @@ class DistributionController extends BaseController
         }
 
         $rows = db_connect()->table('media_assignments ma')
-            ->select('ma.request_id, f.id, f.display_title, f.filename, f.filetype, f.mime_type, f.folder_id, fo.name AS folder_name')
-            ->join('files f', 'f.id = ma.media_id', 'inner')
+            ->select('ma.request_id, ma.media_id AS id, ma.cycle_number, COALESCE(df.display_title, f.display_title) AS display_title, COALESCE(df.filename, f.filename) AS filename, COALESCE(df.filetype, f.filetype) AS filetype, COALESCE(df.mime_type, f.mime_type) AS mime_type, COALESCE(df.folder_id, f.folder_id) AS folder_id, COALESCE(dfo.name, fo.name) AS folder_name', false)
+            ->join('files f', 'f.id = ma.media_id', 'left')
+            ->join('department_files df', 'df.source_assignment_id = ma.id AND df.department = ma.department', 'left')
+            ->join('department_folders dfo', 'dfo.id = df.folder_id', 'left')
             ->join('folder fo', 'fo.id = f.folder_id', 'left')
             ->whereIn('ma.request_id', $requestIds)
+            ->groupStart()->where('f.id IS NOT NULL', null, false)->orWhere('df.id IS NOT NULL', null, false)->groupEnd()
             ->orderBy('fo.name', 'ASC')
             ->orderBy('f.display_title', 'ASC')
             ->get()

@@ -17,7 +17,8 @@ $mediaFiles = array_map(static function (array $file): array {
         'size' => (int) ($file['size'] ?? 0),
         'tags' => (string) ($file['tags'] ?? ''),
         'folder_id' => empty($file['folder_id']) ? null : (int) $file['folder_id'],
-        'preview_url' => $isImage ? site_url('workspace/file-management/' . $fileId . '/preview') : null,
+        'preview_kind' => $isImage ? 'image' : (str_starts_with($mime, 'video/') || in_array(strtolower($type), ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'], true) ? 'video' : 'file'),
+        'preview_url' => $isImage ? site_url('workspace/file-management/' . $fileId . '/preview?thumbnail=1') : null,
     ];
 }, $files);
 $mediaFolders = array_map(static fn (array $folder): array => [
@@ -30,70 +31,70 @@ $mediaFolders = array_map(static fn (array $folder): array => [
 ], $folders ?? []);
 $requestPreviewFiles = [];
 foreach ($requestFiles ?? [] as $requestId => $items) {
-    $requestPreviewFiles[(int) $requestId] = array_map(static function (array $file): array {
+    $requestPreviewFiles[(int) $requestId] = array_map(static function (array $file) use ($requestId): array {
         $fileId = (int) $file['id'];
         $mime = (string) ($file['mime_type'] ?? '');
         $type = (string) ($file['filetype'] ?? '');
         $isImage = str_starts_with($mime, 'image/') || in_array(strtolower($type), ['jpg', 'jpeg', 'png', 'gif', 'webp'], true);
+        $isVideo = str_starts_with($mime, 'video/') || in_array(strtolower($type), ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'], true);
 
         return [
             'id' => $fileId,
             'title' => (string) ($file['media_title'] ?? MediaTitle::forFile($file)),
             'folder' => (string) ($file['folder_name'] ?? 'Root library'),
-            'preview_url' => $isImage ? site_url('workspace/file-management/' . $fileId . '/preview') : null,
+            'cycle_number' => max(1, (int) ($file['cycle_number'] ?? 1)),
+            'preview_kind' => $isVideo ? 'video' : ($isImage ? 'image' : 'file'),
+            'preview_url' => ($isImage || $isVideo) ? site_url('workspace/distribution/requests/' . (int) $requestId . '/files/' . $fileId . '/preview?thumbnail=1') : null,
         ];
     }, $items);
 }
 ?>
 <style>
-.distribution-workflow{--mini-primary:#1f6fff;--mini-primary-soft:#eaf1ff;--mini-ink:#11264b;--mini-muted:#65728b;--mini-border:#dce5f3}.distribution-workflow .status-path{display:flex;gap:.4rem;flex-wrap:wrap}.distribution-workflow .status-dot{align-items:center;display:inline-flex;gap:.35rem}.distribution-workflow .status-dot::before{background:#d7dfed;border-radius:999px;content:"";height:.55rem;width:.55rem}.distribution-workflow .status-dot.is-done::before{background:#0d6efd}.distribution-workflow .status-dot.is-complete::before{background:#198754}.distribution-workflow .request-details{max-width:280px}.distribution-workflow .request-description{white-space:normal}.distribution-workflow .request-row-focus>*{background:#fff7db;box-shadow:inset 0 1px #f2cf66,inset 0 -1px #f2cf66}.distribution-workflow .media-picker-dialog{max-width:min(1040px,calc(100vw - 1.5rem))}.distribution-workflow .media-picker-content{border:0;border-radius:8px;box-shadow:0 18px 48px rgba(31,49,83,.22);max-height:calc(100vh - 2rem);overflow:hidden}.distribution-workflow .media-picker-form{display:flex;flex-direction:column;max-height:calc(100vh - 2rem)}.distribution-workflow .media-picker-body{background:#f5f8fd;overflow:auto;padding:1rem}.distribution-workflow .mini-library{background:#fff;border:1px solid var(--mini-border);border-radius:8px;box-shadow:0 4px 14px rgba(37,52,85,.06);overflow:hidden}.distribution-workflow .mini-library-head{align-items:center;display:flex;gap:1rem;justify-content:space-between;padding:1rem 1.1rem}.distribution-workflow .mini-library-title{align-items:center;display:flex;gap:.75rem}.distribution-workflow .mini-library-symbol{align-items:center;background:#e9efff;border-radius:8px;color:var(--mini-primary);display:flex;font-size:1.2rem;height:44px;justify-content:center;width:44px}.distribution-workflow .mini-library h6{color:var(--mini-ink);font-size:1.08rem;font-weight:750;margin:0}.distribution-workflow .mini-library p{color:var(--mini-muted);font-size:.82rem;margin:.2rem 0 0}.distribution-workflow .mini-search{background:#f0f4f9;border:1px solid transparent;border-radius:999px;max-width:260px;min-width:210px;overflow:hidden}.distribution-workflow .mini-search:focus-within{background:#fff;border-color:#b7ccff;box-shadow:0 1px 5px rgba(49,94,251,.12)}.distribution-workflow .mini-search .input-group-text,.distribution-workflow .mini-search .form-control{background:transparent;border:0;min-height:40px}.distribution-workflow .mini-search .input-group-text{color:var(--mini-primary)}.distribution-workflow .mini-breadcrumb{background:#f3f6fb;border-bottom:1px solid #dfe7f7;border-top:1px solid #edf1f7;color:#4a5e89;display:flex;flex-wrap:wrap;font-size:.82rem;gap:.35rem;padding:.7rem 1.1rem}.distribution-workflow .mini-crumb{background:transparent;border:0;color:#1f6fff;font-weight:650;padding:0}.distribution-workflow .mini-crumb[aria-current="page"]{color:#4a5e89;cursor:default}.distribution-workflow .mini-browser{padding:1rem 1.1rem 1.15rem}.distribution-workflow .mini-section-title{color:var(--mini-ink);font-size:.9rem;font-weight:750;margin:0 0 .75rem}.distribution-workflow .mini-grid{display:grid;gap:.85rem;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:1rem}.distribution-workflow .mini-tile{appearance:none;background:#f1f5fa;border:1px solid #e4eaf4;border-radius:8px;color:#34405b;cursor:pointer;display:flex;flex-direction:column;min-height:156px;overflow:hidden;padding:.65rem;position:relative;text-align:left;transition:background .15s,border-color .15s,box-shadow .15s,transform .15s;width:100%}.distribution-workflow .mini-tile:hover{background:#fff;border-color:#aebfe0;box-shadow:0 5px 14px rgba(60,64,67,.12);transform:translateY(-1px)}.distribution-workflow .mini-tile:focus-visible{box-shadow:0 0 0 3px rgba(31,111,255,.22);outline:0}.distribution-workflow .mini-tile.is-selected{background:#eef4ff;border-color:var(--mini-primary);box-shadow:0 0 0 2px rgba(31,111,255,.13)}.distribution-workflow .mini-select-mark{align-items:center;background:rgba(255,255,255,.96);border:1px solid #d9e2f4;border-radius:6px;color:transparent;display:flex;height:28px;justify-content:center;left:.65rem;position:absolute;top:.65rem;width:28px;z-index:2}.distribution-workflow .mini-tile.is-selected .mini-select-mark{background:var(--mini-primary);border-color:var(--mini-primary);color:#fff}.distribution-workflow .mini-thumb{align-items:center;background:#fff;border-radius:7px;color:var(--mini-primary);display:flex;font-size:2rem;height:92px;justify-content:center;margin-bottom:.65rem;overflow:hidden;width:100%}.distribution-workflow .mini-thumb img{height:100%;object-fit:cover;width:100%}.distribution-workflow .mini-name{color:#34405b;font-size:.88rem;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.distribution-workflow .mini-meta{color:#7a869d;font-size:.76rem;margin-top:.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.distribution-workflow .mini-empty{align-items:center;color:#7a869d;display:flex;grid-column:1/-1;justify-content:center;min-height:120px;text-align:center}.distribution-workflow .picker-footer-summary{color:#44516e;font-size:.86rem;font-weight:700;margin-right:auto}.distribution-workflow .media-picker-form .modal-footer{background:#fff;border-top:1px solid #e8edf5;bottom:0;position:sticky;z-index:4}.distribution-workflow .preview-media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.75rem}.distribution-workflow .preview-media-card{background:#fff;border:1px solid #e1e7f2;border-radius:8px;overflow:hidden}.distribution-workflow .preview-media-card .mini-thumb{border-radius:0;height:84px;margin:0;width:100%}.distribution-workflow .preview-media-card .small{padding:.45rem}.distribution-workflow .readonly-preview-list{max-height:360px;overflow:auto}
-@media (max-width:767.98px){.distribution-workflow .mini-library-head{align-items:stretch;flex-direction:column}.distribution-workflow .mini-search{max-width:none;width:100%}.distribution-workflow .mini-grid{grid-template-columns:repeat(auto-fill,minmax(135px,1fr))}.distribution-workflow .mini-tile{min-height:145px}.distribution-workflow .mini-thumb{height:82px}}
+    .direct-department-picker .form-select { min-height: 38px; white-space: normal; overflow-wrap: anywhere; }
+    .direct-department-picker .dropdown-menu { width: 100%; min-width: 0; max-height: 240px; overflow-y: auto; padding: .375rem; margin-top: .375rem; border: 1px solid #dee2e6; border-radius: .5rem; box-shadow: 0 .5rem 1.25rem rgba(1, 41, 112, .12); }
+    .direct-department-picker .dropdown-item { padding: .6rem .75rem; border-radius: .25rem; white-space: normal; overflow-wrap: anywhere; }
+    .direct-department-picker .dropdown-item.active { background-color: #edf2ff; color: #1746a2; font-weight: 600; }
 
-/* Refined mini library palette */
-.distribution-workflow {
-    --mini-primary: #315efb;
-    --mini-primary-deep: #2348c7;
-    --mini-primary-soft: #eaf0ff;
-    --mini-canvas: #f3f6fc;
-    --mini-ink: #1c2c4a;
-    --mini-muted: #687791;
-    --mini-border: #d8e1f0;
-}
-.distribution-workflow .media-picker-content { border-radius: 14px; box-shadow: 0 24px 64px rgba(25, 43, 78, .26); }
-.distribution-workflow .media-picker-body { background: linear-gradient(180deg, #eef3fb 0%, #f8faff 100%); }
-.distribution-workflow .mini-library { border-color: #d3def0; border-radius: 12px; box-shadow: 0 8px 24px rgba(30, 54, 99, .09); }
-.distribution-workflow .mini-library-head { background: linear-gradient(135deg, #ffffff 35%, #f1f5ff 100%); border-bottom: 1px solid #e4eaf5; }
-.distribution-workflow .mini-library-symbol { background: linear-gradient(145deg, var(--mini-primary), var(--mini-primary-deep)); box-shadow: 0 6px 14px rgba(49, 94, 251, .24); color: #fff; }
-.distribution-workflow .mini-search { background: #fff; border-color: #cad7ec; box-shadow: 0 2px 8px rgba(35, 72, 145, .07); }
-.distribution-workflow .mini-search:focus-within { border-color: var(--mini-primary); box-shadow: 0 0 0 3px rgba(49, 94, 251, .12); }
-.distribution-workflow .mini-breadcrumb { background: #edf3ff; border-bottom-color: #d9e4f7; border-top: 0; color: #53698f; }
-.distribution-workflow .mini-crumb { color: var(--mini-primary); }
-.distribution-workflow .mini-crumb[aria-current="page"] { color: #405476; }
-.distribution-workflow .mini-browser { background: #fbfcff; }
-.distribution-workflow .mini-section-title { color: #334a71; font-size: .78rem; letter-spacing: .045em; text-transform: uppercase; }
-.distribution-workflow .mini-tile { background: linear-gradient(180deg, #f5f8fd 0%, #edf2fa 100%); border-color: #dce5f2; border-radius: 10px; }
-.distribution-workflow .mini-tile:hover { background: #fff; border-color: #9cb5e4; box-shadow: 0 8px 20px rgba(37, 63, 110, .14); }
-.distribution-workflow .mini-tile.is-selected { background: linear-gradient(180deg, #eef3ff, #e3ebff); border-color: var(--mini-primary); box-shadow: 0 0 0 2px rgba(49, 94, 251, .14), 0 7px 18px rgba(49, 94, 251, .12); }
-.distribution-workflow .mini-tile[data-picker-folder] .mini-thumb { background: linear-gradient(145deg, #edf3ff, #dfe9ff); color: var(--mini-primary); }
-.distribution-workflow .mini-tile[data-picker-file] .mini-thumb { background: #fff; border: 1px solid #e1e8f3; color: #526da5; }
-.distribution-workflow .mini-tile.is-selected .mini-thumb { box-shadow: inset 0 0 0 1px rgba(49, 94, 251, .2); }
-.distribution-workflow .mini-name { color: #253858; }
-.distribution-workflow .mini-meta { color: #667994; }
-.distribution-workflow .media-picker-form .modal-footer { background: #f9fbff; border-top-color: #dce5f2; }
-.distribution-workflow .picker-footer-summary { color: #334a71; }
+.distribution-workflow .transaction-thumbnail { position: relative; background: #f0f4f9; }
+.distribution-workflow .transaction-thumbnail img { position: absolute; inset: 0; background: #f0f4f9; object-fit: contain; }
+.distribution-workflow .transaction-video-badge { position: absolute; right: 4px; bottom: 4px; border-radius: 4px; padding: 2px 5px; background: rgba(17,38,75,.85); color: #fff; font-size: 11px; line-height: 1.4; }
+.distribution-workflow .history-header { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; margin: 1.5rem 0 1rem; }
+.distribution-workflow .history-header h6 { margin: 0; color: #253858; font-weight: 700; }
+.distribution-workflow .history-header span { color: #687791; font-size: .75rem; }
+.distribution-workflow .history-timeline { list-style: none; margin: 0; padding: 0; }
+.distribution-workflow .history-event { --event-color: #315efb; --event-bg: #edf2ff; position: relative; padding: 0 0 1rem 3rem; }
+.distribution-workflow .history-event::before { content: ""; position: absolute; left: 16px; top: 34px; bottom: 0; width: 2px; background: #e4eaf3; }
+.distribution-workflow .history-event:last-child { padding-bottom: 0; }
+.distribution-workflow .history-event:last-child::before { display: none; }
+.distribution-workflow .history-event.is-complete { --event-color: #187349; --event-bg: #eaf7ef; }
+.distribution-workflow .history-event.is-incomplete { --event-color: #a54b16; --event-bg: #fff3e8; }
+.distribution-workflow .history-event.is-submitted { --event-color: #63718a; --event-bg: #f0f3f8; }
+.distribution-workflow .history-icon { position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--event-color); background: var(--event-bg); font-size: 1rem; }
+.distribution-workflow .history-card { border: 1px solid #e1e7f0; border-radius: 10px; padding: .85rem 1rem; background: #fff; min-width: 0; }
+.distribution-workflow .history-event-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .35rem .75rem; }
+.distribution-workflow .history-event-title { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+.distribution-workflow .history-event-title strong { font-size: .9rem; color: #253858; }
+.distribution-workflow .history-cycle { border-radius: 5px; padding: .15rem .45rem; background: #f0f3f8; color: #52617a; font-size: .7rem; font-weight: 600; }
+.distribution-workflow .history-date, .distribution-workflow .history-actor { color: #687791; font-size: .76rem; }
+.distribution-workflow .history-actor { margin-top: .3rem; overflow-wrap: anywhere; }
+.distribution-workflow .history-statuses { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .65rem; margin-top: .65rem; font-size: .73rem; }
+.distribution-workflow .history-status { background: var(--event-bg); color: var(--event-color); border-radius: 5px; padding: .2rem .5rem; font-weight: 600; }
+.distribution-workflow .history-authorization { color: #687791; }
+.distribution-workflow .history-feedback { margin-top: .75rem; border-left: 3px solid var(--event-color); border-radius: 0 6px 6px 0; background: var(--event-bg); padding: .6rem .75rem; }
+.distribution-workflow .history-feedback-label { display: block; font-size: .7rem; font-weight: 700; color: var(--event-color); margin-bottom: .2rem; }
+.distribution-workflow .history-feedback p { margin: 0; color: #34405b; font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 575.98px) {
-    .distribution-workflow .media-picker-dialog { margin: .35rem; max-width: calc(100vw - .7rem); }
-    .distribution-workflow .media-picker-content, .distribution-workflow .media-picker-form { max-height: calc(100dvh - .7rem); }
-    .distribution-workflow .media-picker-body { padding: .65rem; }
-    .distribution-workflow .mini-library-head, .distribution-workflow .mini-browser { padding: .85rem; }
-    .distribution-workflow .mini-grid { gap: .65rem; }
+    .distribution-workflow .history-event { padding-left: 2.65rem; }
+    .distribution-workflow .history-card { padding: .75rem; }
+    .distribution-workflow .history-date { flex-basis: 100%; }
 }
 </style>
+<?= view('components/distribution_picker_styles') ?>
 <main id="main" class="main distribution-workflow">
     <div class="pagetitle"><h1><?= $isDepartment ? 'My Requests' : 'Distribution Workflow' ?></h1><nav><ol class="breadcrumb"><li class="breadcrumb-item"><a href="<?= esc(site_url('dashboard')) ?>">Dashboard</a></li><li class="breadcrumb-item active"><?= $isDepartment ? 'My Requests' : 'Distribution Workflow' ?></li></ol></nav></div>
     <section class="section">
-        <?php if ($success): ?><div class="alert alert-success"><?= esc($success) ?></div><?php endif; ?>
-        <?php if ($error): ?><div class="alert alert-danger"><?= esc($error) ?></div><?php endif; ?>
+        <?php if ($success): ?><div class="alert alert-success" role="alert" data-auto-dismiss><?= esc($success) ?></div><?php endif; ?>
+        <?php if ($error): ?><div class="alert alert-danger" role="alert" data-auto-dismiss><?= esc($error) ?></div><?php endif; ?>
 
         <?php if ($isDepartment): ?>
             <div class="card mb-4" id="request-media">
@@ -119,32 +120,26 @@ foreach ($requestFiles ?? [] as $requestId => $items) {
                 <div class="card-body pt-3">
                     <div class="table-responsive">
                         <table class="table align-middle">
-                            <thead><tr><th>Department</th><th>Request</th><th>Requested By</th><th>Timeline</th><th>Status</th><th class="text-end">Action</th></tr></thead>
+                            <thead><tr><th>Transaction</th><th>Request</th><th>Requested By</th><th>Cycle</th><th>Status / Authorization</th><th class="text-end">Action</th></tr></thead>
                             <tbody>
                             <?php foreach ($requests as $request): ?>
                                 <?php $status = (string) $request['status']; $requestId = (int) $request['id']; ?>
                                 <tr id="request-<?= $requestId ?>" class="<?= ($focusedRequestId ?? null) === $requestId ? 'request-row-focus' : '' ?>">
-                                    <td><?= esc($request['department']) ?></td>
-                                    <td class="request-details"><strong><?= esc($request['title']) ?></strong><?php if (! empty($request['description'])): ?><div class="small text-muted request-description"><?= esc($request['description']) ?></div><?php endif; ?><div class="small text-muted"><?= esc(date('M j, Y g:i A', strtotime((string) $request['submitted_at']))) ?></div></td>
+                                    <td><strong><?= esc($request['transaction_code'] ?? ('TRX-' . $requestId)) ?></strong><div class="small text-muted"><?= esc($request['department']) ?></div></td>
+                                    <td class="request-details"><strong><?= esc($request['title']) ?></strong><?php if (! empty($request['description'])): ?><div class="small text-muted request-description"><?= esc($request['description']) ?></div><?php endif; ?><div class="small text-muted"><?= esc(\App\Libraries\DisplayTime::format($request['submitted_at'], 'M j, Y g:i A')) ?></div></td>
                                     <td><?= esc($request['requester_name'] ?: 'Department user') ?></td>
-                                    <td>
-                                        <div class="status-path">
-                                            <span class="status-dot is-done">Submitted</span>
-                                            <span class="status-dot <?= in_array($status, ['transmitted', 'completed'], true) ? 'is-done' : '' ?>">Transmitted</span>
-                                            <span class="status-dot <?= $status === 'completed' ? 'is-complete' : '' ?>">Completed</span>
-                                        </div>
-                                        <?php if ($request['transmitter_name']): ?><div class="small text-muted mt-2">Transmitted by: <strong><?= esc($request['transmitter_name']) ?></strong><br><?= esc(date('M j, Y g:i A', strtotime((string) $request['transmitted_at']))) ?></div><?php endif; ?>
-                                    </td>
-                                    <td><span class="badge <?= $status === 'completed' ? 'bg-success-subtle text-success' : (in_array($status, ['transmitted', 'sent'], true) ? 'bg-primary-subtle text-primary' : 'bg-light text-dark') ?>"><?= esc(ucfirst($status)) ?></span></td>
+                                    <td><span class="badge bg-light text-dark">Cycle <?= (int) ($request['current_cycle'] ?? 0) ?></span></td>
+                                    <td><span class="badge <?= $status === 'complete' ? 'bg-success-subtle text-success' : ($status === 'pending_incomplete' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning') ?>"><?= esc($status === 'pending_incomplete' ? 'Pending – Incomplete' : ucfirst($status)) ?></span><div class="small mt-1"><?= ($request['authorization_status'] ?? 'not_authorized') === 'authorized' ? '<span class="text-success">Authorized</span>' : '<span class="text-muted">Not Authorized</span>' ?></div></td>
                                     <td class="text-end text-nowrap">
-                                        <?php if ($canManage && $status === 'submitted'): ?>
-                                            <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#mediaPickerModal" data-mode="request" data-action="<?= esc(site_url('workspace/distribution/requests/' . $requestId . '/transmit'), 'attr') ?>" data-request-id="<?= $requestId ?>" data-request-title="<?= esc($request['title'], 'attr') ?>" data-request-user="<?= esc($request['requester_name'] ?: 'Department user', 'attr') ?>" data-department="<?= esc($request['department'], 'attr') ?>">Transmit</button>
+                                        <?php if ($canManage && in_array($status, ['submitted', 'pending_incomplete'], true)): ?>
+                                            <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#serverTransmitModal" data-mode="request" data-action="<?= esc(site_url('workspace/distribution/requests/' . $requestId . '/transmit-server'), 'attr') ?>" data-request-id="<?= $requestId ?>" data-request-title="<?= esc($request['title'], 'attr') ?>" data-request-user="<?= esc($request['requester_name'] ?: 'Department user', 'attr') ?>" data-department="<?= esc($request['department'], 'attr') ?>"><?= $status === 'pending_incomplete' ? 'Send corrections' : 'Transmit' ?></button>
                                         <?php endif; ?>
-                                        <?php if (($canManage || $isDepartment) && in_array($status, ['transmitted', 'completed'], true)): ?>
-                                            <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#requestPreviewModal" data-request-id="<?= $requestId ?>" data-request-title="<?= esc($request['title'], 'attr') ?>" data-request-user="<?= esc($request['requester_name'] ?: 'Department user', 'attr') ?>" data-department="<?= esc($request['department'], 'attr') ?>" data-status="<?= esc(ucfirst($status), 'attr') ?>">Preview</button>
+                                        <?php if (($canManage || $isDepartment) && in_array($status, ['pending', 'pending_incomplete', 'complete'], true)): ?>
+                                            <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#requestPreviewModal" data-request-id="<?= $requestId ?>" data-request-title="<?= esc($request['title'], 'attr') ?>" data-request-user="<?= esc($request['requester_name'] ?: 'Department user', 'attr') ?>" data-department="<?= esc($request['department'], 'attr') ?>" data-status="<?= esc(ucfirst($status), 'attr') ?>" data-authorization="<?= esc((string) ($request['authorization_status'] ?? 'not_authorized'), 'attr') ?>">Preview</button>
                                         <?php endif; ?>
-                                        <?php if ($isDepartment && $status === 'transmitted'): ?>
-                                            <form class="d-inline" action="<?= esc(site_url('workspace/distribution/requests/' . $requestId . '/complete')) ?>" method="post"><?= csrf_field() ?><button class="btn btn-success btn-sm" type="submit">Complete</button></form>
+                                        <?php if ($isDepartment && $status === 'pending'): ?>
+                                            <button class="btn btn-outline-danger btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#reviewModal" data-review-action="<?= esc(site_url('workspace/distribution/requests/' . $requestId . '/incomplete'), 'attr') ?>" data-review-kind="incomplete">Mark as Incomplete</button>
+                                            <button class="btn btn-success btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#reviewModal" data-review-action="<?= esc(site_url('workspace/distribution/requests/' . $requestId . '/complete'), 'attr') ?>" data-review-kind="complete">Confirm Complete</button>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -161,13 +156,24 @@ foreach ($requestFiles ?? [] as $requestId => $items) {
                     <div class="card-body pt-3">
                         <h2 class="h5">Direct Send</h2>
                         <div class="row g-3 align-items-end">
-                            <div class="col-md-5"><label class="form-label" for="directDepartment">Department</label><select class="form-select" id="directDepartment" required><option value="">Select department</option><?php foreach ($departments as $department): ?><option><?= esc($department['department']) ?></option><?php endforeach; ?></select></div>
-                            <div class="col-md-7"><button class="btn btn-primary" type="button" id="openDirectPicker" data-mode="direct" data-action="<?= esc(site_url('workspace/distribution/direct-send'), 'attr') ?>">Choose Media &amp; Preview</button></div>
+                            <div class="col-md-5">
+                                <label class="form-label" for="directDepartmentToggle">Department</label>
+                                <div class="dropdown direct-department-picker">
+                                    <input type="hidden" id="directDepartment" value="">
+                                    <button class="form-select text-start" type="button" id="directDepartmentToggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" aria-controls="directDepartmentMenu" <?= $departments === [] ? 'disabled' : '' ?>><?= $departments === [] ? 'No departments available' : 'Select department' ?></button>
+                                    <ul class="dropdown-menu" id="directDepartmentMenu" aria-labelledby="directDepartmentToggle">
+                                        <?php foreach ($departments as $department): ?>
+                                            <li><button class="dropdown-item" type="button" data-direct-department="<?= esc($department['department'], 'attr') ?>"><?= esc($department['department']) ?></button></li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="col-md-7"><button class="btn btn-primary" type="button" id="openDirectPicker" data-mode="direct" data-action="<?= esc(site_url('workspace/distribution/direct-send-server'), 'attr') ?>">Choose Media &amp; Preview</button></div>
                         </div>
                     </div>
                 </div>
             <?php endif; ?>
-            <div class="card"><div class="card-body pt-3"><div class="table-responsive"><table class="table"><thead><tr><th>Department</th><th>Files Sent</th><th>Direct Sent By</th><th>Timestamp</th><th>Status</th></tr></thead><tbody><?php foreach ($directSends as $send): ?><tr><td><?= esc($send['department']) ?></td><td><?= (int) $send['file_count'] ?></td><td><strong><?= esc($send['sender_name'] ?: 'Unknown user') ?></strong><div class="small text-muted">Admin / Creative Staff</div></td><td><?= esc(date('M j, Y g:i A', strtotime((string) $send['sent_at']))) ?></td><td><span class="badge bg-success-subtle text-success"><?= esc(ucfirst((string) $send['status'])) ?></span></td></tr><?php endforeach; ?><?php if ($directSends === []): ?><tr><td colspan="5" class="text-center text-muted py-5">No direct sends found.</td></tr><?php endif; ?></tbody></table></div></div></div>
+            <div class="card"><div class="card-body pt-3"><div class="table-responsive"><table class="table"><thead><tr><th>Transaction</th><th>Department</th><th>Files</th><th>Sender</th><th>Status / Authorization</th><th>Action</th></tr></thead><tbody><?php foreach ($directSends as $send): $directId=(int)$send['id']; $directStatus=(string)$send['status']; ?><tr><td><strong><?= esc($send['transaction_code']) ?></strong><div class="small text-muted">Cycle <?= (int)$send['current_cycle'] ?></div></td><td><?= esc($send['department']) ?></td><td><?= (int) $send['file_count'] ?></td><td><strong><?= esc($send['sender_name'] ?: 'Unknown user') ?></strong><div class="small text-muted"><?= esc(\App\Libraries\DisplayTime::format($send['sent_at'], 'M j, Y g:i A')) ?></div></td><td><span class="badge <?= $directStatus==='complete'?'bg-success-subtle text-success':($directStatus==='pending_incomplete'?'bg-danger-subtle text-danger':'bg-warning-subtle text-warning') ?>"><?= esc($directStatus==='pending_incomplete'?'Pending – Incomplete':ucfirst($directStatus)) ?></span><div class="small"><?= ($send['authorization_status']??'')==='authorized'?'Authorized':'Not Authorized' ?></div></td><td class="text-nowrap"><button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#requestPreviewModal" data-request-id="<?= $directId ?>" data-request-title="Direct Send" data-department="<?= esc($send['department'], 'attr') ?>" data-status="<?= esc($directStatus, 'attr') ?>" data-authorization="<?= esc((string) ($send['authorization_status'] ?? 'not_authorized'), 'attr') ?>">Preview</button><?php if($isDepartment&&$directStatus==='pending'): ?> <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#reviewModal" data-review-action="<?= esc(site_url('workspace/distribution/requests/'.$directId.'/incomplete'),'attr') ?>" data-review-kind="incomplete">Incomplete</button> <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#reviewModal" data-review-action="<?= esc(site_url('workspace/distribution/requests/'.$directId.'/complete'),'attr') ?>" data-review-kind="complete">Confirm Complete</button><?php endif; ?><?php if($canManage&&$directStatus==='pending_incomplete'): ?> <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#serverTransmitModal" data-mode="request" data-action="<?= esc(site_url('workspace/distribution/requests/'.$directId.'/transmit-server'),'attr') ?>" data-request-title="Direct Send corrections" data-department="<?= esc($send['department'],'attr') ?>">Send corrections</button><?php endif; ?></td></tr><?php endforeach; ?><?php if ($directSends === []): ?><tr><td colspan="6" class="text-center text-muted py-5">No direct sends found.</td></tr><?php endif; ?></tbody></table></div></div></div>
         <?php endif; ?>
     </section>
 </main>
@@ -223,7 +229,7 @@ foreach ($requestFiles ?? [] as $requestId => $items) {
                     <input type="hidden" name="department" id="pickerDepartment">
                     <div id="pickerHiddenInputs"></div>
                 </div>
-                <div class="modal-footer"><span class="picker-footer-summary" id="pickerSelectedCount">0 folders &bull; 0 files selected</span><button class="btn btn-light" type="button" id="previewBack">Back</button><button class="btn btn-primary" type="button" id="continuePreview">Continue</button><button class="btn btn-primary d-none" type="submit" id="finalTransmit">Transmit</button></div>
+                <div class="modal-footer"><button class="btn btn-outline-primary btn-sm" type="button" id="pickerSelectAll">Select all on page</button><button class="btn btn-light btn-sm" type="button" id="pickerClear">Clear selection</button><span class="picker-footer-summary" id="pickerSelectedCount" aria-live="polite">0 folders &bull; 0 files selected</span><button class="btn btn-light d-none" type="button" id="previewBack">Back</button><button class="btn btn-primary" type="button" id="continuePreview">Continue</button><button class="btn btn-primary d-none" type="submit" id="finalTransmit">Transmit</button></div>
             </form>
         </div>
     </div>
@@ -233,16 +239,28 @@ foreach ($requestFiles ?? [] as $requestId => $items) {
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header"><div><h5 class="modal-title" id="requestPreviewTitle">Transmitted media</h5><div class="small text-muted" id="requestPreviewContext"></div></div><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button></div>
-            <div class="modal-body"><div class="preview-media-grid readonly-preview-list" id="requestPreviewGrid"></div></div>
+            <div class="modal-body">
+                <div class="alert alert-secondary py-2" id="requestAuthorizationNotice"></div>
+                <p class="small text-muted">Media is grouped by the cycle in which it was first sent. Later cycles show additional files sent for corrections.</p>
+                <div class="readonly-preview-list" id="requestPreviewGrid"></div>
+                <section aria-labelledby="requestHistoryTitle">
+                    <div class="history-header"><h6 id="requestHistoryTitle">Transaction history</h6><span>Latest activity first</span></div>
+                    <ol class="history-timeline" id="requestHistory"></ol>
+                </section>
+            </div>
             <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Close</button></div>
         </div>
     </div>
 </div>
+<?php if ($isDepartment): ?>
+<div class="modal fade" id="reviewModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form id="reviewForm" method="post"><?= csrf_field() ?><div class="modal-header"><h5 class="modal-title" id="reviewTitle">Review transaction</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><p id="reviewHelp"></p><label class="form-label" for="reviewFeedback" id="reviewFeedbackLabel">Feedback *</label><textarea class="form-control" id="reviewFeedback" name="feedback" rows="5" maxlength="4000" required></textarea><div class="form-text">This feedback is permanent and will be added to the transaction history.</div></div><div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn" id="reviewSubmit" type="submit">Submit</button></div></form></div></div></div>
+<?php endif; ?>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var files = <?= json_encode($mediaFiles, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
     var folders = <?= json_encode($mediaFolders, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
     var requestFiles = <?= json_encode($requestPreviewFiles, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+    var requestHistory = <?= json_encode($historyByRequest ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
     var selectedFiles = new Set();
     var selectedFolders = new Set();
     var currentFolder = null;
@@ -301,13 +319,26 @@ document.addEventListener('DOMContentLoaded', function () {
         selectedFolders.forEach(function (folderId) { fileIdsInFolderTree(folderId).forEach(function (fileId) { ids.add(fileId); }); });
         return files.filter(function (file) { return ids.has(file.id); });
     }
+    function visibleFolders() { return searchTerm ? folders.filter(folderMatches) : (childrenByParent[currentFolder || 0] || []); }
+    function visibleFiles() { return searchTerm ? files.filter(fileMatches) : filesInFolder(currentFolder); }
     function renderThumb(file) {
-        return file.preview_url ? '<span class="mini-thumb"><img src="' + file.preview_url + '" alt=""></span>' : '<span class="mini-thumb"><i class="bi bi-file-earmark"></i></span>';
+        var icon = file.preview_kind === 'video' ? 'bi-film' : (file.preview_kind === 'image' ? 'bi-image' : 'bi-file-earmark');
+        var fallback = '<i class="bi ' + icon + '" aria-hidden="true"></i>';
+        if (!file.preview_url) return '<span class="mini-thumb">' + fallback + '</span>';
+        return '<span class="mini-thumb transaction-thumbnail">' + fallback + '<img src="' + h(file.preview_url) + '" alt="' + h(file.title || 'Media preview') + '" loading="lazy" decoding="async" onerror="this.hidden=true">' + (file.preview_kind === 'video' ? '<span class="transaction-video-badge"><i class="bi bi-play-fill"></i> Video</span>' : '') + '</span>';
     }
     function updateSelectedCount() {
         var fileCount = selectedFileObjects().length;
         var folderCount = selectedFolders.size;
         document.getElementById('pickerSelectedCount').innerHTML = folderCount + ' ' + (folderCount === 1 ? 'folder' : 'folders') + ' &bull; ' + fileCount + ' ' + (fileCount === 1 ? 'file' : 'files') + ' selected';
+        var shownFolders = visibleFolders();
+        var shownFiles = visibleFiles();
+        var hasVisibleItems = shownFolders.length + shownFiles.length > 0;
+        var allVisibleSelected = hasVisibleItems && shownFolders.every(function (folder) { return selectedFolders.has(folder.id); }) && shownFiles.every(function (file) { return selectedFiles.has(file.id); });
+        document.getElementById('pickerClear').disabled = !selectedFiles.size && !selectedFolders.size;
+        document.getElementById('continuePreview').disabled = fileCount === 0;
+        document.getElementById('pickerSelectAll').disabled = !hasVisibleItems;
+        document.getElementById('pickerSelectAll').textContent = allVisibleSelected ? 'Unselect all on page' : 'Select all on page';
     }
     function renderBreadcrumb() {
         var crumb = document.getElementById('pickerBreadcrumb');
@@ -336,7 +367,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var selected = tileSelected('folder', folder.id);
         var fileCount = Number(folder.file_count || 0);
         var subfolderCount = Number(folder.subfolder_count || 0);
-        return '<button class="mini-tile' + (selected ? ' is-selected' : '') + '" type="button" data-picker-folder="' + folder.id + '"><span class="mini-select-mark"><i class="bi bi-check2"></i></span><span class="mini-thumb"><i class="bi bi-folder-fill"></i></span><span class="mini-name" title="' + h(folder.name) + '">' + h(folder.name) + '</span><span class="mini-meta">' + fileCount + ' ' + (fileCount === 1 ? 'file' : 'files') + ' &bull; ' + subfolderCount + ' ' + (subfolderCount === 1 ? 'folder' : 'folders') + '</span></button>';
+        return '<button class="mini-tile' + (selected ? ' is-selected' : '') + '" type="button" data-picker-folder="' + folder.id + '"><span class="mini-select-mark"><i class="bi bi-check2"></i></span><span class="mini-thumb"><i class="bi bi-folder-fill"></i></span><span class="mini-name">' + h(folder.name) + '</span><span class="mini-meta">' + fileCount + ' ' + (fileCount === 1 ? 'file' : 'files') + ' &bull; ' + subfolderCount + ' ' + (subfolderCount === 1 ? 'folder' : 'folders') + '</span></button>';
     }
     function fileTile(file) {
         var selected = tileSelected('file', file.id);
@@ -345,8 +376,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderPicker() {
         var folderGrid = document.getElementById('pickerFolderGrid');
         var fileGrid = document.getElementById('pickerFileGrid');
-        var foldersToShow = searchTerm ? folders.filter(folderMatches) : (childrenByParent[currentFolder || 0] || []);
-        var filesToShow = searchTerm ? files.filter(fileMatches) : filesInFolder(currentFolder);
+        var foldersToShow = visibleFolders();
+        var filesToShow = visibleFiles();
         renderBreadcrumb();
         folderGrid.innerHTML = foldersToShow.map(folderTile).join('') || '<div class="mini-empty">No matching folders.</div>';
         fileGrid.innerHTML = filesToShow.map(fileTile).join('') || '<div class="mini-empty">No matching files.</div>';
@@ -378,7 +409,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         var back = document.getElementById('previewBack');
         if (document.getElementById('previewStep').classList.contains('d-none')) {
-            back.disabled = currentFolder === null;
+            back.classList.toggle('d-none', currentFolder === null);
             back.textContent = 'Back';
         }
         updateSelectedCount();
@@ -386,9 +417,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function showPickerStep() {
         document.getElementById('pickerStep').classList.remove('d-none');
         document.getElementById('previewStep').classList.add('d-none');
-        document.getElementById('previewBack').classList.remove('d-none');
         document.getElementById('continuePreview').classList.remove('d-none');
         document.getElementById('finalTransmit').classList.add('d-none');
+        document.getElementById('pickerSelectAll').classList.remove('d-none');
+        document.getElementById('pickerClear').classList.remove('d-none');
         renderPicker();
     }
     function buildPreview() {
@@ -400,9 +432,10 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('pickerStep').classList.add('d-none');
         document.getElementById('previewStep').classList.remove('d-none');
         document.getElementById('previewBack').classList.remove('d-none');
-        document.getElementById('previewBack').disabled = false;
         document.getElementById('continuePreview').classList.add('d-none');
         document.getElementById('finalTransmit').classList.remove('d-none');
+        document.getElementById('pickerSelectAll').classList.add('d-none');
+        document.getElementById('pickerClear').classList.add('d-none');
         document.getElementById('previewFileCount').textContent = 'Total Files: ' + chosen.length;
         document.getElementById('previewFolderCount').textContent = 'Total Folders: ' + selectedFolders.size;
         document.getElementById('previewFolders').innerHTML = Array.from(selectedFolders).map(function (id) {
@@ -437,8 +470,17 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('miniMediaSearch').value = '';
             showPickerStep();
         });
-        document.getElementById('miniMediaSearch').addEventListener('input', function (event) {
-            searchTerm = event.target.value.trim().toLowerCase();
+        window.GreyhoundSearch.attach(document.getElementById('miniMediaSearch'), function (term) {
+            return folders.map(function (folder) { return folder.name; }).concat(files.map(function (file) { return file.filename || file.title; }))
+                .filter(function (name) { return name && name.toLowerCase().includes(term.toLowerCase()); });
+        }, function (value) { searchTerm = value.trim().toLowerCase(); renderPicker(); });
+        document.getElementById('pickerClear').addEventListener('click', function () { selectedFiles.clear(); selectedFolders.clear(); renderPicker(); });
+        document.getElementById('pickerSelectAll').addEventListener('click', function () {
+            var shownFolders = visibleFolders();
+            var shownFiles = visibleFiles();
+            var shouldSelect = !(shownFolders.length + shownFiles.length > 0 && shownFolders.every(function (folder) { return selectedFolders.has(folder.id); }) && shownFiles.every(function (file) { return selectedFiles.has(file.id); }));
+            shownFolders.forEach(function (folder) { if (shouldSelect) selectedFolders.add(folder.id); else selectedFolders.delete(folder.id); });
+            shownFiles.forEach(function (file) { if (shouldSelect) selectedFiles.add(file.id); else selectedFiles.delete(file.id); });
             renderPicker();
         });
         document.getElementById('continuePreview').addEventListener('click', buildPreview);
@@ -451,6 +493,21 @@ document.addEventListener('DOMContentLoaded', function () {
             renderPicker();
         });
     }
+    var departmentToggle = document.getElementById('directDepartmentToggle');
+    var departmentOptions = document.querySelectorAll('[data-direct-department]');
+    departmentOptions.forEach(function (option) {
+        option.addEventListener('click', function () {
+            document.getElementById('directDepartment').value = option.dataset.directDepartment;
+            departmentToggle.textContent = option.dataset.directDepartment;
+            departmentOptions.forEach(function (item) {
+                item.classList.toggle('active', item === option);
+                if (item === option) item.setAttribute('aria-current', 'true');
+                else item.removeAttribute('aria-current');
+            });
+            bootstrap.Dropdown.getOrCreateInstance(departmentToggle).hide();
+            departmentToggle.focus();
+        });
+    });
     var directButton = document.getElementById('openDirectPicker');
     if (directButton) {
         directButton.addEventListener('click', function () {
@@ -460,7 +517,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             directButton.dataset.department = department;
-            if (pickerModal) bootstrap.Modal.getOrCreateInstance(pickerModal).show(directButton);
+            var serverPicker = document.getElementById('serverTransmitModal');
+            if (serverPicker) bootstrap.Modal.getOrCreateInstance(serverPicker).show(directButton);
         });
     }
     var previewModal = document.getElementById('requestPreviewModal');
@@ -470,10 +528,71 @@ document.addEventListener('DOMContentLoaded', function () {
         var transmitted = requestFiles[id] || [];
         document.getElementById('requestPreviewTitle').textContent = trigger.dataset.requestTitle || 'Transmitted media';
         document.getElementById('requestPreviewContext').textContent = (trigger.dataset.department || '') + ' - ' + (trigger.dataset.requestUser || 'Department user') + ' - ' + (trigger.dataset.status || '');
-        document.getElementById('requestPreviewGrid').innerHTML = transmitted.map(function (file) { return '<div class="preview-media-card">' + renderThumb(file) + '<div class="small"><strong class="d-block text-truncate">' + h(file.title) + '</strong><span class="text-muted text-truncate d-block">' + h(file.folder || 'Root library') + '</span></div></div>'; }).join('') || '<div class="text-muted">No transmitted files were recorded for this request.</div>';
+        var filesByCycle = {};
+        transmitted.forEach(function (file) {
+            var cycle = Math.max(1, parseInt(file.cycle_number, 10) || 1);
+            if (!filesByCycle[cycle]) filesByCycle[cycle] = [];
+            filesByCycle[cycle].push(file);
+        });
+        document.getElementById('requestPreviewGrid').innerHTML = Object.keys(filesByCycle).sort(function (a, b) { return Number(a) - Number(b); }).map(function (cycle) {
+            var cycleFiles = filesByCycle[cycle];
+            var label = cycle === '1' ? 'First cycle (Cycle 1)' : (cycle === '2' ? 'Second cycle (Cycle 2)' : 'Cycle ' + cycle);
+            var badgeClass = cycle === '1' ? 'bg-primary-subtle text-primary' : 'bg-success-subtle text-success';
+            var cards = cycleFiles.map(function (file) {
+                return '<div class="preview-media-card">' + renderThumb(file) + '<div class="small"><span class="badge ' + badgeClass + ' mb-1">Cycle ' + h(cycle) + '</span><strong class="d-block text-truncate">' + h(file.title) + '</strong><span class="text-muted text-truncate d-block">' + h(file.folder || 'Root library') + '</span></div></div>';
+            }).join('');
+            return '<section class="mb-3"><h6>' + h(label) + ' <span class="small text-muted">&middot; ' + cycleFiles.length + ' ' + (cycleFiles.length === 1 ? 'file' : 'files') + '</span></h6><div class="preview-media-grid">' + cards + '</div></section>';
+        }).join('') || '<div class="text-muted">No transmitted files were recorded for this request.</div>';
+        var normalizedStatus = String(trigger.dataset.status || '').toLowerCase();
+        var normalizedAuthorization = String(trigger.dataset.authorization || '').toLowerCase();
+        var authorized = normalizedAuthorization === 'authorized' || normalizedStatus === 'complete' || normalizedStatus === 'completed';
+        document.getElementById('requestAuthorizationNotice').className = 'alert py-2 ' + (authorized ? 'alert-success' : 'alert-warning');
+        document.getElementById('requestAuthorizationNotice').textContent = authorized ? 'Authorized — Available in Department File Management' : 'Not Authorized — Not yet available in Department File Management';
+        document.getElementById('requestHistory').innerHTML = (requestHistory[id] || []).map(function (entry) {
+            var action = String(entry.display_action || entry.action || '').toLowerCase();
+            var actions = {
+                submitted: ['Request submitted', 'bi-file-earmark-text', 'is-submitted'],
+                original: ['Initial files sent', 'bi-send', ''],
+                transmitted: ['Files sent', 'bi-send', ''],
+                direct_sent: ['Files sent directly', 'bi-send', ''],
+                resubmission: ['Corrections sent', 'bi-arrow-repeat', ''],
+                marked_incomplete: ['Corrections requested', 'bi-exclamation-circle', 'is-incomplete'],
+                confirmed_complete: ['Completed', 'bi-check-lg', 'is-complete']
+            };
+            var detail = Object.prototype.hasOwnProperty.call(actions, action) ? actions[action] : [action.replaceAll('_', ' ') || 'Activity recorded', 'bi-clock-history', 'is-submitted'];
+            var statuses = { submitted: 'Awaiting files', pending: 'Awaiting review', transmitted: 'Awaiting review', sent: 'Awaiting review', pending_incomplete: 'Needs corrections', complete: 'Complete', completed: 'Complete' };
+            var status = Object.prototype.hasOwnProperty.call(statuses, entry.transaction_status) ? statuses[entry.transaction_status] : String(entry.transaction_status || '').replaceAll('_', ' ');
+            var authorization = entry.authorization_status === 'authorized' ? 'Authorized' : (entry.authorization_status === 'not_authorized' ? 'Not yet authorized' : String(entry.authorization_status || '').replaceAll('_', ' '));
+            var feedbackLabel = action === 'marked_incomplete' ? 'What needs to change' : (action === 'confirmed_complete' ? 'Completion feedback' : 'Feedback');
+            var feedback = entry.feedback ? '<div class="history-feedback"><span class="history-feedback-label">' + feedbackLabel + '</span><p>' + h(entry.feedback) + '</p></div>' : '';
+            var cycleLabel = entry.display_cycle ? 'Cycle ' + entry.display_cycle : 'Request';
+            var roles = { admin: 'Admin', department: 'Department', creative: 'Creative staff', creative_staff: 'Creative staff' };
+            var role = Object.prototype.hasOwnProperty.call(roles, entry.actor_role) ? roles[entry.actor_role] : String(entry.actor_role || '').replaceAll('_', ' ');
+            var rawDate = String(entry.created_at || '').trim();
+            var utcDate = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(rawDate)
+                ? rawDate.replace(' ', 'T') + 'Z' : rawDate;
+            var date = new Date(utcDate);
+            var dateText = Number.isNaN(date.getTime()) ? 'Date unavailable' :
+                date.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }) + ' · ' +
+                date.toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' }) + ' PHT';
+            var statusLine = status || authorization ? '<div class="history-statuses">' + (status ? '<span class="history-status">' + h(status) + '</span>' : '') + (authorization ? '<span class="history-authorization">' + h(authorization) + '</span>' : '') + '</div>' : '';
+            return '<li class="history-event ' + detail[2] + '"><span class="history-icon" aria-hidden="true"><i class="bi ' + detail[1] + '"></i></span><div class="history-card"><div class="history-event-head"><div class="history-event-title"><strong>' + h(detail[0]) + '</strong><span class="history-cycle">' + h(cycleLabel) + '</span></div><span class="history-date" title="' + h(dateText) + '">' + h(dateText) + '</span></div><div class="history-actor">' + h(entry.actor_name || 'Unknown user') + (role ? ' · ' + h(role) : '') + '</div>' + statusLine + feedback + '</div></li>';
+        }).join('') || '<li class="text-muted small py-3">No activity yet. Updates will appear here as this request progresses.</li>';
+    });
+    var reviewModal = document.getElementById('reviewModal');
+    if (reviewModal) reviewModal.addEventListener('show.bs.modal', function (event) {
+        var trigger = event.relatedTarget, incomplete = trigger.dataset.reviewKind === 'incomplete';
+        document.getElementById('reviewForm').action = trigger.dataset.reviewAction;
+        document.getElementById('reviewTitle').textContent = incomplete ? 'Mark as Incomplete' : 'Confirm Complete';
+        document.getElementById('reviewHelp').textContent = incomplete ? 'Explain what files or information are missing or incorrect.' : 'Confirm that every required file has been received and verified.';
+        document.getElementById('reviewFeedbackLabel').textContent = incomplete ? 'Reason / Feedback *' : 'Completion Feedback *';
+        document.getElementById('reviewSubmit').className = 'btn ' + (incomplete ? 'btn-danger' : 'btn-success');
+        document.getElementById('reviewSubmit').textContent = incomplete ? 'Mark as Incomplete' : 'Confirm Complete';
+        document.getElementById('reviewFeedback').value = '';
     });
 });
 </script>
 </div>
 <?php endif; ?>
+<?php if ($canManage): ?><?= view('distribution/server_picker') ?><?php endif; ?>
 <?= view('layouts/app_footer') ?>

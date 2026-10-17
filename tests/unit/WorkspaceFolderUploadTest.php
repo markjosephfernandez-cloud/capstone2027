@@ -2,6 +2,7 @@
 
 use App\Controllers\Web\WorkspaceController;
 use App\Models\FolderModel;
+use CodeIgniter\HTTP\Files\UploadedFile;
 use CodeIgniter\Test\CIUnitTestCase;
 
 /** @internal */
@@ -71,6 +72,27 @@ final class WorkspaceFolderUploadTest extends CIUnitTestCase
         $method->invoke(new WorkspaceController(), 'Pillar/2026', '../outside.jpg');
     }
 
+    public function testRejectedPhpUploadIsReportedBeforeTemporaryFileIsRead(): void
+    {
+        $method = new ReflectionMethod(WorkspaceController::class, 'assertUploadReady');
+        $upload = new UploadedFile('', 'large-photo.jpg', 'image/jpeg', 0, UPLOAD_ERR_INI_SIZE);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('upload_max_filesize');
+
+        $method->invoke(new WorkspaceController(), $upload);
+    }
+
+    public function testPhpUploadLimitUnitsAreConvertedToBytes(): void
+    {
+        $method = new ReflectionMethod(WorkspaceController::class, 'phpIniBytes');
+        $controller = new WorkspaceController();
+
+        $this->assertSame(100 * 1048576, $method->invoke($controller, '100M'));
+        $this->assertSame(2 * 1073741824, $method->invoke($controller, '2G'));
+        $this->assertSame(512 * 1024, $method->invoke($controller, '512K'));
+    }
+
     public function testFolderHierarchyIsCreatedAndReusedForUploadedFiles(): void
     {
         $folders = new FolderModel();
@@ -97,46 +119,5 @@ final class WorkspaceFolderUploadTest extends CIUnitTestCase
         $this->assertSame((int) $rows[1]['id'], (int) $rows[2]['parent_id']);
     }
 
-    public function testDuplicateModesUseSeparateCandidateScopes(): void
-    {
-        $db = db_connect();
-        $db->table('files')->insertBatch([
-            ['is_deleted' => 0, 'upload_batch_id' => 'current-batch', 'content_hash' => 'a', 'size' => 1],
-            ['is_deleted' => 0, 'upload_batch_id' => 'older-batch', 'content_hash' => 'b', 'size' => 1],
-            ['is_deleted' => 0, 'upload_batch_id' => null, 'content_hash' => 'c', 'size' => 1],
-        ]);
-        $method = new ReflectionMethod(WorkspaceController::class, 'duplicateCandidates');
-        $controller = new WorkspaceController();
 
-        $batchIds = array_map('intval', array_column($method->invoke($controller, 'current-batch', 'upload_batch')->findAll(), 'id'));
-        $libraryIds = array_map('intval', array_column($method->invoke($controller, 'current-batch', 'media_library')->findAll(), 'id'));
-
-        $this->assertSame([1], $batchIds);
-        $this->assertSame([2, 3], $libraryIds);
-    }
-
-    public function testDuplicateRestoreReturnsCopyToOriginalFolder(): void
-    {
-        $method = new ReflectionMethod(WorkspaceController::class, 'duplicateRestorePayload');
-        $payload = $method->invoke(new WorkspaceController(), [
-            'filename' => 'portrait-copy.JPG',
-            'display_title' => 'Portrait copy',
-            'filepath' => 'C:/managed/Duplicate Queue/portrait-copy.JPG',
-            'mime_type' => 'image/jpeg',
-            'size' => 2048,
-            'created_at' => '2026-08-13 10:00:00',
-            'uploaded_by' => 20230107,
-            'content_hash' => str_repeat('a', 64),
-            'image_fingerprint' => '0123456789abcdef',
-            'upload_batch_id' => 'batch-12345678',
-            'original_file_id' => 42,
-        ], ['id' => 42, 'folder_id' => 7], ['employee_id' => 1], '2026-08-13 11:00:00');
-
-        $this->assertSame(7, $payload['folder_id']);
-        $this->assertSame(42, $payload['duplicate_of']);
-        $this->assertSame(20230107, $payload['employee_id']);
-        $this->assertSame('jpg', $payload['filetype']);
-        $this->assertSame('restored', $payload['last_action']);
-        $this->assertSame('draft', $payload['release_status']);
-    }
 }

@@ -39,14 +39,14 @@
 </style>
 <div class="pagetitle"><h1>Metadata Passports</h1><nav><ol class="breadcrumb"><li class="breadcrumb-item"><a href="<?= esc(site_url('dashboard')) ?>">Home</a></li><li class="breadcrumb-item active">Metadata Passports</li></ol></nav></div>
 <section class="section">
-    <?php if (! empty($success)): ?><div class="alert alert-success"><?= esc($success) ?></div><?php endif; ?>
-    <?php if (! empty($error)): ?><div class="alert alert-danger"><?= esc($error) ?></div><?php endif; ?>
+    <?php if (! empty($success)): ?><div class="alert alert-success" role="alert" data-auto-dismiss><?= esc($success) ?></div><?php endif; ?>
+    <?php if (! empty($error)): ?><div class="alert alert-danger" role="alert" data-auto-dismiss><?= esc($error) ?></div><?php endif; ?>
     <div class="row">
         <div class="col-md-6"><div class="card info-card"><div class="card-body"><h5 class="card-title">GENERATED</h5><h6><?= esc(number_format($summary['total'])) ?></h6></div></div></div>
         <div class="col-md-6"><div class="card info-card"><div class="card-body"><h5 class="card-title">LOW-CONFIDENCE AI FLAGS</h5><h6><?= esc(number_format($summary['ai_flags'])) ?></h6></div></div></div>
     </div>
     <div class="card"><div class="card-body">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h5 class="card-title mb-1">AI Media Passport Metadata</h5><p class="text-muted small mb-0">Passports are generated automatically during upload and do not block publication.</p></div><?php if ($isAdmin): ?><div class="d-flex gap-2"><form method="post" action="<?= esc(site_url('workspace/passports/analyze')) ?>"><?= csrf_field() ?><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-cpu me-1"></i>Run missing AI analysis</button></form><form method="post" action="<?= esc(site_url('workspace/passports/backfill')) ?>"><?= csrf_field() ?><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Generate missing passports</button></form></div><?php endif; ?></div>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h5 class="card-title mb-1">AI Media Passport Metadata</h5><p class="text-muted small mb-0">Passports are generated automatically during upload and do not block publication.</p></div><?php if ($isAdmin): ?><div class="d-flex flex-wrap gap-2"><form method="post" action="<?= esc(site_url('workspace/passports/analyze')) ?>"><?= csrf_field() ?><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-cpu me-1"></i>Run missing AI analysis</button></form><button class="btn btn-primary btn-sm" id="passportScanButton" type="button" data-bs-toggle="modal" data-bs-target="#passportScanPicker"><i class="bi bi-search me-1"></i>Generate missing passports</button></div><?php endif; ?></div>
         <?php
             $searchQuery = (string) ($searchQuery ?? '');
             $pagination = $pagination ?? ['current_page'=>1,'total_pages'=>1,'total_results'=>count($passports),'per_page'=>20,'from'=>count($passports)===0?0:1,'to'=>count($passports)];
@@ -61,11 +61,10 @@
                 ? range(1, $totalPages)
                 : array_values(array_unique(array_filter([1, $currentPage-2, $currentPage-1, $currentPage, $currentPage+1, $currentPage+2, $totalPages], static fn(int $page): bool => $page >= 1 && $page <= $totalPages)));
         ?>
-        <form class="passport-search mb-3" method="get" action="<?= esc(site_url('workspace/passports')) ?>" role="search" data-ajax-live-search>
+        <form class="passport-search mb-3" method="get" action="<?= esc(site_url('workspace/passports')) ?>" role="search" data-ajax="true" data-ajax-preserve-scroll>
             <div class="d-flex flex-column flex-md-row gap-2">
-                <div class="input-group flex-grow-1"><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" type="search" name="q" value="<?= esc($searchQuery) ?>" maxlength="100" placeholder="Search filename, original date taken, or event" aria-label="Search metadata passports"></div>
+                <div class="input-group flex-grow-1 search-reset-field" data-search-reset><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" data-search-suggestions="<?= esc(site_url('workspace/search-suggestions/passports')) ?>" type="search" name="q" value="<?= esc($searchQuery) ?>" maxlength="100" placeholder="Search filename, original date taken, or event" aria-label="Search metadata passports"><a class="search-reset-clear" data-search-clear data-ajax-preserve-scroll href="<?= esc(site_url('workspace/passports')) ?>" aria-label="Clear search and show all passports" title="Clear search" <?= $searchQuery === '' ? 'hidden' : '' ?>>&times;</a></div>
                 <button class="btn btn-primary px-4" type="submit">Search</button>
-                <?php if ($searchQuery !== ''): ?><a class="btn btn-outline-secondary" href="<?= esc(site_url('workspace/passports')) ?>">Clear</a><?php endif; ?>
             </div>
         </form>
         <div class="table-responsive"><table class="table align-middle"><thead class="table-light"><tr><th>Preview</th><th>Media</th><th>Event</th><th>AI confidence</th><th>Rights</th><th>Integrity</th><th>Processing</th><th class="text-end">Details</th></tr></thead><tbody>
@@ -83,7 +82,7 @@
                 'preview_url'=>$previewUrl,'download_url'=>$downloadUrl,'is_image'=>$isImage,
                 'event_name'=>(string)($passport['event_name']?:'Unclassified'),'department'=>(string)($passport['department']?:'Not provided'),
                 'photographer'=>(string)($passport['photographer']?:'Not provided'),'uploader'=>(string)($passport['uploader_name']?:($passport['uploaded_by']?:'Not provided')),
-                'date_taken'=>$passport['date_taken']?:'Not available','upload_date'=>$passport['upload_date']?:'Not available',
+                'date_taken'=>$passport['date_taken']?:'Not available','upload_date'=>\App\Libraries\DisplayTime::format($passport['upload_date'] ?? null, 'M d, Y g:i A', 'Not available'),
                 'ai_classification'=>(string)($passport['ai_classification']?:'Unclassified'),
                 'confidence'=>$passport['confidence_score']===null?'Not available':number_format((float)$passport['confidence_score'],2).'%',
                 'ai_version'=>(string)($passport['ai_version']?:'Not available'),
@@ -123,6 +122,7 @@
         </div>
     </div></div>
 </section>
+<?php if ($isAdmin): ?><?= view('addons/passport_scan_picker') ?><?php endif; ?>
 <div class="modal fade" id="passportDetailsModal" tabindex="-1" aria-labelledby="passportDetailsTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered passport-details-dialog">
         <div class="modal-content passport-details-content">
@@ -143,7 +143,7 @@
                             <div class="passport-detail-item"><span class="passport-detail-label">Photographer</span><span class="passport-detail-value" data-detail-field="photographer"></span></div>
                             <div class="passport-detail-item"><span class="passport-detail-label">Department</span><span class="passport-detail-value" data-detail-field="department"></span></div>
                             <div class="passport-detail-item"><span class="passport-detail-label">Original date taken</span><span class="passport-detail-value" data-detail-field="date_taken"></span></div>
-                            <div class="passport-detail-item"><span class="passport-detail-label">Upload date</span><span class="passport-detail-value" data-detail-field="upload_date"></span></div>
+                            <div class="passport-detail-item"><span class="passport-detail-label">Upload date (PHT)</span><span class="passport-detail-value" data-detail-field="upload_date"></span></div>
                             <div class="passport-detail-item is-wide"><span class="passport-detail-label">Uploaded by</span><span class="passport-detail-value" data-detail-field="uploader"></span></div>
                         </div></section>
                         <section class="passport-detail-section"><h6 class="passport-detail-heading"><i class="bi bi-cpu"></i>AI analysis</h6><div class="passport-detail-grid">
