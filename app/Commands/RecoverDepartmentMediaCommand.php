@@ -15,20 +15,33 @@ class RecoverDepartmentMediaCommand extends BaseCommand
 
     public function run(array $params)
     {
-        if (db_connect()->tableExists('department_files')) { CLI::error('The independent library is enabled. Use department:separate-library for legacy assignments.'); return EXIT_ERROR; }
+        if (db_connect()->tableExists('department_files')) {
+            CLI::error('The independent library is enabled. Use department:separate-library for legacy assignments.');
+            return EXIT_ERROR;
+        }
         $root = config('Storage')->departmentRoot();
-        if (!is_dir($root)) { CLI::error('Department storage is unavailable.'); return EXIT_ERROR; }
+        if (! is_dir($root)) {
+            CLI::error('Department storage is unavailable.');
+            return EXIT_ERROR;
+        }
         $lock = fopen(WRITEPATH . 'department-recovery.lock', 'c');
-        if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) { CLI::error('Another recovery is running.'); return EXIT_ERROR; }
+        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            CLI::error('Another recovery is running.');
+            return EXIT_ERROR;
+        }
         try {
             $service = new DepartmentMediaRecoveryService(db_connect(), service('storage'), $root);
             $plan = $service->plan();
             $totals = [];
-            foreach ($plan as $entry) $totals[$entry['department']][$entry['action']] = ($totals[$entry['department']][$entry['action']] ?? 0) + 1;
+            foreach ($plan as $entry) {
+                $totals[$entry['department']][$entry['action']] = ($totals[$entry['department']][$entry['action']] ?? 0) + 1;
+            }
             CLI::write(json_encode($totals, JSON_PRETTY_PRINT));
             if (CLI::getOption('apply') !== null) {
                 $directory = WRITEPATH . 'recovery';
-                if (!is_dir($directory) && !mkdir($directory, 0700, true)) throw new \RuntimeException('Cannot create recovery manifest directory.');
+                if (! is_dir($directory) && ! mkdir($directory, 0700, true)) {
+                    throw new \RuntimeException('Cannot create recovery manifest directory.');
+                }
                 $manifest = $directory . '/department-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.json';
                 $created = $service->apply($plan, $manifest);
                 CLI::write(json_encode(array_map('count', $created)));

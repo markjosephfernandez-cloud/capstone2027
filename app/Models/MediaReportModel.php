@@ -7,6 +7,7 @@ use CodeIgniter\Model;
 /** Read-only reports; existing controllers retain responsibility for authorization. */
 class MediaReportModel extends Model
 {
+    /** @return array{available: bool, rows: list<array<string, mixed>>, page: int, pages: int, total: int} */
     public function processingReport(int $page = 1): array
     {
         if (! $this->db->tableExists('vw_media_processing_status')) {
@@ -21,6 +22,7 @@ class MediaReportModel extends Model
         return ['available' => true] + compact('rows', 'page', 'pages', 'total');
     }
 
+    /** @return list<array<string, mixed>> */
     public function departmentSummary(): array
     {
         return $this->db->tableExists('vw_department_media_summary')

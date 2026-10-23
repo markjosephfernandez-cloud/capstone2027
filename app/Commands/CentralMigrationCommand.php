@@ -13,7 +13,10 @@ class CentralMigrationCommand extends BaseCommand
     public function run(array $params)
     {
         $lock = fopen(WRITEPATH.'cache/central-migration.lock','c');
-        if (!$lock || !flock($lock,LOCK_EX|LOCK_NB)) { CLI::error('Migration already running.'); return EXIT_ERROR; }
+        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            CLI::error('Migration already running.');
+            return EXIT_ERROR;
+        }
         try {
             $report = (new \App\Services\CentralMigrationService())->run(CLI::getOption('apply') !== null,
                 static fn ($table,$id) => CLI::write('Verified '.$table.' #'.$id), CLI::getOption('exclude-missing-duplicates') !== null);

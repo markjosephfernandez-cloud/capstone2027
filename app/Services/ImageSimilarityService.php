@@ -41,7 +41,9 @@ class ImageSimilarityService
         $sample = imagecreatetruecolor(9, 8);
         if ($sample === false || ! imagecopyresampled($sample, $source, 0, 0, 0, 0, 9, 8, imagesx($source), imagesy($source))) {
             imagedestroy($source);
-            if ($sample !== false) imagedestroy($sample);
+            if ($sample !== false) {
+                imagedestroy($sample);
+            }
             return null;
         }
 
@@ -121,7 +123,9 @@ class ImageSimilarityService
                     continue;
                 }
             }
-            if ($candidateFingerprint === '') continue;
+            if ($candidateFingerprint === '') {
+                continue;
+            }
 
             $similarity = $this->similarity($fingerprint, $candidateFingerprint);
             if ($similarity >= self::MATCH_THRESHOLD && ($best === null || $similarity > $best['similarity'])) {

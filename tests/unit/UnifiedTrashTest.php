@@ -68,7 +68,7 @@ final class UnifiedTrashTest extends CIUnitTestCase
         parent::tearDown();
     }
 
-    private function call(string $method, array $query = [], array $post = [])
+    private function call(string $method, array $query = [], array $post = [], array $arguments = [])
     {
         $controller = new class($this->editor, $this->trash) extends WorkspaceController {
             public function __construct(private ServerLibraryEditor $editor, private TrashService $trash) {}
@@ -78,7 +78,7 @@ final class UnifiedTrashTest extends CIUnitTestCase
         $request = new IncomingRequest(config('App'), new URI('http://example.com/'), null, new UserAgent());
         $request->setGlobal('get', $query); $request->setGlobal('post', $post);
         $controller->initController($request, new Response(config('App')), service('logger'));
-        return $controller->$method();
+        return $controller->$method(...$arguments);
     }
 
     private function serverFile(string $name): string
@@ -95,6 +95,63 @@ final class UnifiedTrashTest extends CIUnitTestCase
         $file = ['id'=>$id,'filename'=>'local-'.$id.'.jpg','display_title'=>'Local '.$id,'filepath'=>service('storage')->databasePath($path),'filetype'=>'jpg','size'=>14,'dateupload'=>gmdate('Y-m-d H:i:s'),'is_deleted'=>0];
         db_connect()->table('files')->insert($file);
         $this->trash->moveToTrash([$file], $this->actor, 'Local test');
+    }
+
+    public function testPreviewReadsActualTrashFilesAndDeletedFolderChildren(): void
+    {
+        $source = $this->root . '/share/Events/original.png';
+        $image = imagecreatetruecolor(64, 48);
+        imagepng($image, $source);
+        imagedestroy($image);
+        $originalHash = hash_file('sha256', $source);
+        $this->editor->rename('Events/original.png', 'renamed.png');
+        $this->editor->trash(['Events'], 7);
+        $id = array_key_last($this->editor->state()['trash']);
+        $before = $this->editor->state();
+        $response = $this->call('serverTrashPreview', ['thumbnail'=>'1', 'child'=>'renamed.png'], [], [$id]);
+        $this->assertSame('image/jpeg', getimagesizefromstring($response->getBody())['mime']);
+        $this->assertSame($originalHash, hash_file('sha256', $this->editor->previewPath($id, 'renamed.png')));
+        $this->assertSame($before, $this->editor->state());
+        $html = $this->call('serverTrashFolder', [], [], [$id]);
+        $this->assertStringContainsString('renamed.png', $html);
+        $this->assertStringContainsString('thumbnail=1', $html);
+        $this->assertSame(404, $this->call('serverTrashPreview', ['child'=>'../escape'], [], [$id])->getStatusCode());
+
+        $this->localFile(1);
+        $file = db_connect()->table('files')->where('id', 1)->get()->getRowArray();
+        $physical = service('storage')->resolveDatabaseFile($file['filepath']);
+        $image = imagecreatetruecolor(64, 48);
+        imagejpeg($image, $physical);
+        imagedestroy($image);
+        // A file belonging to a deleted folder still resolves via its stored Trash path.
+        db_connect()->table('trashfiles')->where('file_id', 1)->update(['folder_root_id'=>99]);
+        $hash = hash_file('sha256', $physical);
+        $response = $this->call('trashPreview', ['thumbnail'=>'1'], [], [1]);
+        $this->assertSame('image/jpeg', getimagesizefromstring($response->getBody())['mime']);
+        $this->assertSame($hash, hash_file('sha256', $physical));
+        $this->assertSame(1, (int) db_connect()->table('files')->where('id', 1)->get()->getRowArray()['is_deleted']);
+    }
+
+    public function testServerTrashVideoProducesPrivatePosterWithoutChangingOriginal(): void
+    {
+        $ffmpeg = null;
+        foreach (['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg'] as $binary) {
+            if (is_executable($binary)) { $ffmpeg = $binary; break; }
+        }
+        if ($ffmpeg === null) $this->markTestSkipped('FFmpeg is required.');
+        $path = $this->root . '/share/Events/clip.mp4';
+        $process = proc_open([$ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=64x48:r=10', '-t', '0.3', '-c:v', 'mpeg4', $path], [0=>['pipe','r'], 1=>['pipe','w'], 2=>['pipe','w']], $pipes);
+        fclose($pipes[0]);
+        stream_get_contents($pipes[1]); fclose($pipes[1]);
+        $error = stream_get_contents($pipes[2]); fclose($pipes[2]);
+        $this->assertSame(0, proc_close($process), $error);
+        $hash = hash_file('sha256', $path);
+        $this->editor->trash(['Events/clip.mp4'], 7);
+        $id = array_key_last($this->editor->state()['trash']);
+        $response = $this->call('serverTrashPreview', ['thumbnail'=>'1'], [], [$id]);
+        $this->assertSame('image/jpeg', getimagesizefromstring($response->getBody())['mime']);
+        $this->assertSame('private, no-cache, must-revalidate', $response->getHeaderLine('Cache-Control'));
+        $this->assertSame($hash, hash_file('sha256', $this->editor->previewPath($id)));
     }
 
     public function testBothLibrariesAppearInTheSameSearchablePaginatedGrid(): void
@@ -114,7 +171,7 @@ final class UnifiedTrashTest extends CIUnitTestCase
         $this->assertStringNotContainsString('Local 19', $filtered);
         $this->assertStringNotContainsString('server-video.mp4', $filtered);
         $this->assertStringContainsString('Creative User', $filtered);
-        $this->assertStringContainsString('Permanently deleted in 30 days', $filtered);
+        $this->assertStringContainsString('Retention: 30 days', $filtered);
         $this->assertStringNotContainsString('No automatic expiry', $filtered);
     }
 

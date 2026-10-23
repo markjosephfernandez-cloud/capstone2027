@@ -16,28 +16,40 @@ class ParallelFileCopier
         $deadline = microtime(true) + $timeout;
         try {
             while ($next < count($jobs) || $active !== []) {
-                if (microtime(true) >= $deadline) throw new RuntimeException('Copying server files timed out.');
+                if (microtime(true) >= $deadline) {
+                    throw new RuntimeException('Copying server files timed out.');
+                }
                 while ($next < count($jobs) && count($active) < min(2, max(1, $concurrency))) {
                     [$source, $target] = $jobs[$next++];
                     if (!$parallel) {
-                        if (!@copy($source, $target)) throw new RuntimeException('A server file could not be copied.');
+                        if (! @copy($source, $target)) {
+                            throw new RuntimeException('A server file could not be copied.');
+                        }
                         break;
                     }
                     // Arguments bypass the shell, including spaces and punctuation in filenames.
                     $null = PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null';
                     $process = proc_open([$binary, '-n', '-r', 'exit(@copy($argv[1], $argv[2]) ? 0 : 1);', $source, $target],
                         [0=>['file', $null, 'r'], 1=>['file', $null, 'w'], 2=>['file', $null, 'w']], $pipes);
-                    if (!is_resource($process)) throw new RuntimeException('A file copy worker could not start.');
+                    if (! is_resource($process)) {
+                        throw new RuntimeException('A file copy worker could not start.');
+                    }
                     $active[] = $process;
                 }
                 foreach ($active as $key => $process) {
                     $status = proc_get_status($process);
-                    if ($status['running']) continue;
+                    if ($status['running']) {
+                        continue;
+                    }
                     proc_close($process);
                     unset($active[$key]);
-                    if ($status['exitcode'] !== 0) throw new RuntimeException('A server file could not be copied.');
+                    if ($status['exitcode'] !== 0) {
+                        throw new RuntimeException('A server file could not be copied.');
+                    }
                 }
-                if ($active !== []) usleep(10000);
+                if ($active !== []) {
+                    usleep(10000);
+                }
             }
         } finally {
             // Stop writers before the caller removes partial destinations.

@@ -30,19 +30,25 @@ class IFoundClassificationService
 
     public function annotate(array $visibleFiles): array
     {
-        if ($visibleFiles === []) return [];
+        if ($visibleFiles === []) {
+            return [];
+        }
         $folderIds = array_values(array_unique(array_map(static fn ($file) => (int) ($file['folder_id'] ?? 0), $visibleFiles)));
         $query = db_connect()->table('files f')
             ->select('f.id, f.folder_id, f.filetype, f.mime_type, ed.event_name, ed.confidence_score, ed.detector_version, ed.evidence_json')
             ->join('ai_event_detections ed', 'ed.media_id = f.id', 'inner')
             ->where('f.is_deleted', 0)
             ->groupStart()->whereIn('f.folder_id', $folderIds);
-        if (in_array(0, $folderIds, true)) $query->orWhere('f.folder_id', null);
+        if (in_array(0, $folderIds, true)) {
+            $query->orWhere('f.folder_id', null);
+        }
         $allFiles = $query->groupEnd()->get()->getResultArray();
         $counts = [];
         foreach ($allFiles as $file) {
             $event = $this->confidentPrediction($file);
-            if ($event === null) continue;
+            if ($event === null) {
+                continue;
+            }
             $folder = (int) ($file['folder_id'] ?? 0);
             $counts[$folder][$event] = ($counts[$folder][$event] ?? 0) + 1;
         }
@@ -56,7 +62,9 @@ class IFoundClassificationService
             $file['ai_prediction'] = $this->prediction($file);
             $reviewed = ! empty($file['reviewed_at']) && (int) ($file['needs_review'] ?? 1) === 0;
             $event = $this->confidentPrediction($file);
-            if (! is_string($event) || ! array_key_exists($event, $this->config->eventKeywords)) $event = null;
+            if (! is_string($event) || ! array_key_exists($event, $this->config->eventKeywords)) {
+                $event = null;
+            }
             $file['result_from_review'] = $reviewed;
             $file['ai_result'] = ! $this->isImage($file) ? 'not_applicable'
                 : ($reviewed ? 'reviewed' : ($event === null || $dominant === null ? 'needs_review' : ($event === $dominant ? 'dominant' : 'different')));
@@ -85,7 +93,9 @@ class IFoundClassificationService
             || ($file['detector_version'] ?? '') === 'greyhound-keyword-baseline') return null;
         // Older keyword results sometimes carried a trained-model version label.
         foreach ($this->evidence($file) as $entry) {
-            if (is_array($entry) && ($entry['type'] ?? '') === 'keyword') return null;
+            if (is_array($entry) && ($entry['type'] ?? '') === 'keyword') {
+                return null;
+            }
         }
         return $this->prediction($file);
     }

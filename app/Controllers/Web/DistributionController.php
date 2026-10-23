@@ -61,10 +61,16 @@ class DistributionController extends BaseController
                 ->groupBy('department')->orderBy('department')->get()->getResultArray()
             : [];
         $actionQuery = $db->table('distribution_actions')->orderBy('created_at', 'DESC')->limit(500);
-        if ($role === 'department') $actionQuery->where('department', (string) ($actor['department'] ?? ''));
+        if ($role === 'department') {
+            $actionQuery->where('department', (string) ($actor['department'] ?? ''));
+        }
         $actions = $actionQuery->get()->getResultArray();
         $historyByRequest = [];
-        foreach ($actions as $action) if (! empty($action['request_id'])) $historyByRequest[(int) $action['request_id']][] = $action;
+        foreach ($actions as $action) {
+            if (! empty($action['request_id'])) {
+                $historyByRequest[(int) $action['request_id']][] = $action;
+            }
+        }
         foreach ($historyByRequest as &$requestHistory) {
             $requestHistory = $this->withDisplayCycles($requestHistory);
         }
@@ -179,7 +185,9 @@ class DistributionController extends BaseController
     /** Serves media only inside an authorized transaction review. */
     public function reviewPreview(int $requestId, int $fileId)
     {
-        if (session()->get('isLoggedIn') !== true) return redirect()->to(site_url('login'));
+        if (session()->get('isLoggedIn') !== true) {
+            return redirect()->to(site_url('login'));
+        }
         $actor = session()->get();
         $db = db_connect();
         $request = $db->table('media_requests')->where('id', $requestId)->get()->getRowArray();
@@ -194,7 +202,9 @@ class DistributionController extends BaseController
         if ((new \Config\Storage())->centralized() && $file && ($assignment['status'] ?? '') !== 'completed') {
             $file['filepath'] = $assignment['delivery_filepath'] ?? '';
         }
-        if ($file === null) return $this->response->setStatusCode(404)->setBody('File not found.');
+        if ($file === null) {
+            return $this->response->setStatusCode(404)->setBody('File not found.');
+        }
         try {
             $path = service('storage')->resolveDatabaseFile((string) $file['filepath']);
         } catch (RuntimeException) {
@@ -217,7 +227,9 @@ class DistributionController extends BaseController
                     return $response->setStatusCode(304)->setBody('');
                 }
                 $body = file_get_contents($thumbnail);
-                if ($body === false) throw new RuntimeException('Thumbnail unavailable.');
+                if ($body === false) {
+                    throw new RuntimeException('Thumbnail unavailable.');
+                }
                 return $response->setContentType('image/jpeg')->setHeader('Content-Length', (string) strlen($body))->setBody($body);
             } catch (RuntimeException $exception) {
                 log_message('warning', 'Transaction thumbnail unavailable: {message}', ['message' => $exception->getMessage()]);
@@ -271,7 +283,10 @@ class DistributionController extends BaseController
         }
     }
 
-    /** @param list<int> $ids @return list<string> */
+    /**
+     * @param list<int> $ids
+     * @return list<string>
+     */
     private function mediaNames(array $ids): array
     {
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0)));
@@ -287,7 +302,10 @@ class DistributionController extends BaseController
         return $names;
     }
 
-    /** @param list<int> $folderIds @return list<string> */
+    /**
+     * @param list<int> $folderIds
+     * @return list<string>
+     */
     private function folderNames(array $folderIds): array
     {
         $folderIds = array_values(array_unique(array_filter(array_map('intval', $folderIds), static fn (int $id): bool => $id > 0)));
@@ -298,7 +316,10 @@ class DistributionController extends BaseController
         return array_values(array_map(static fn (array $folder): string => (string) $folder['name'], (new FolderModel())->where('is_deleted', 0)->whereIn('id', $folderIds)->findAll()));
     }
 
-    /** @param list<int> $requestIds @return array<int, list<array<string, mixed>>> */
+    /**
+     * @param list<int> $requestIds
+     * @return array<int, list<array<string, mixed>>>
+     */
     private function requestFiles(array $requestIds): array
     {
         $requestIds = array_values(array_unique(array_filter($requestIds, static fn (int $id): bool => $id > 0)));
@@ -328,7 +349,10 @@ class DistributionController extends BaseController
         return $files;
     }
 
-    /** @param list<int> $folderIds @return list<int> */
+    /**
+     * @param list<int> $folderIds
+     * @return list<int>
+     */
     private function fileIdsFromFolders(array $folderIds): array
     {
         $folderIds = $this->expandedFolderIds($folderIds);
@@ -345,7 +369,10 @@ class DistributionController extends BaseController
         return array_values(array_map(static fn (array $file): int => (int) $file['id'], $rows));
     }
 
-    /** @param list<int> $folderIds @return list<int> */
+    /**
+     * @param list<int> $folderIds
+     * @return list<int>
+     */
     private function expandedFolderIds(array $folderIds): array
     {
         $folderIds = array_values(array_unique(array_filter(array_map('intval', $folderIds), static fn (int $id): bool => $id > 0)));

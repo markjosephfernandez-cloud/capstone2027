@@ -23,7 +23,9 @@ class FolderController extends ApiController
         $metadata = [];
         $deletedPaths = [];
         foreach ((new FolderModel())->findAll() as $folder) {
-            if ((new \Config\Storage())->centralized() && str_starts_with((string)$folder['path'],'server-library/')) $folder['path'] = substr($folder['path'],15);
+            if ((new \Config\Storage())->centralized() && str_starts_with((string) $folder['path'], 'server-library/')) {
+                $folder['path'] = substr($folder['path'], 15);
+            }
             if (! empty($folder['path'])) {
                 if ((int) ($folder['is_deleted'] ?? 0) === 1) {
                     $deletedPaths[(string) $folder['path']] = true;
@@ -45,8 +47,14 @@ class FolderController extends ApiController
             }
             $childPath = ltrim(($relative === '' ? '' : $relative . '/') . $item->getFilename(), '/');
             if ((new \Config\Storage())->centralized()) {
-                if ($item->isLink()) continue;
-                try { (new \App\Services\ServerLibraryService())->relative($childPath); } catch (RuntimeException) { continue; }
+                if ($item->isLink()) {
+                    continue;
+                }
+                try {
+                    (new \App\Services\ServerLibraryService())->relative($childPath);
+                } catch (RuntimeException) {
+                    continue;
+                }
             }
             if (isset($deletedPaths[$childPath])) {
                 continue;

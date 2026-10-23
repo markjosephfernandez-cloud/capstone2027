@@ -17,9 +17,15 @@ class ServerLibraryController extends BaseController
     // Every server page (including the actions controller) formats file sizes.
     protected $helpers = ['dashboard'];
 
-    protected function library(): ServerLibraryService { return new ServerLibraryService(); }
+    protected function library(): ServerLibraryService
+    {
+        return new ServerLibraryService();
+    }
 
-    protected function catalog(): ServerLibraryService { return new \App\Services\ServerLibraryCatalog(); }
+    protected function catalog(): ServerLibraryService
+    {
+        return new \App\Services\ServerLibraryCatalog();
+    }
 
     protected function fileManagementCatalog(): ServerLibraryService
     {
@@ -28,12 +34,19 @@ class ServerLibraryController extends BaseController
         return $catalog;
     }
 
-    protected function uploads(): \App\Services\ServerLibraryUploadService { return new \App\Services\ServerLibraryUploadService($this->library()); }
+    protected function uploads(): \App\Services\ServerLibraryUploadService
+    {
+        return new \App\Services\ServerLibraryUploadService($this->library());
+    }
 
     public function viewed(string $token)
     {
-        if ($denied = $this->access()) return $denied;
-        if (!(new \Config\Storage())->centralized()) return $this->response->setStatusCode(204);
+        if ($denied = $this->access()) {
+            return $denied;
+        }
+        if (! (new \Config\Storage())->centralized()) {
+            return $this->response->setStatusCode(204);
+        }
         try {
             $path = \App\Services\ServerLibraryPresentation::path($token);
             (new \App\Services\CentralMediaService($this->library()))->viewed($path,(int)session()->get('employee_id'));
@@ -43,7 +56,9 @@ class ServerLibraryController extends BaseController
 
     public function recent()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $actor = session()->get();
         session()->close();
         $rows = db_connect()->table('server_recent r')->select('m.id, m.path, r.viewed_at')
@@ -55,22 +70,32 @@ class ServerLibraryController extends BaseController
 
     public function uploadToken()
     {
-        if ($denied = $this->access()) return $denied;
-        if (!RolePolicy::allows(session()->get(), 'files.upload')) return $this->response->setStatusCode(403)->setJSON(['ok'=>false]);
+        if ($denied = $this->access()) {
+            return $denied;
+        }
+        if (! RolePolicy::allows(session()->get(), 'files.upload')) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false]);
+        }
         $chunkBytes = \App\Services\ChunkUploadService::MAX_CHUNK_BYTES;
         foreach (['upload_max_filesize','post_max_size'] as $key) {
             $value = trim((string)ini_get($key));
             $bytes = (float)$value * match (strtolower(substr($value,-1))) { 'g'=>1073741824, 'm'=>1048576, 'k'=>1024, default=>1 };
-            if ($bytes > 0) $chunkBytes = min($chunkBytes, max(1,(int)floor($bytes*.75)));
+            if ($bytes > 0) {
+                $chunkBytes = min($chunkBytes, max(1, (int) floor($bytes * 0.75)));
+            }
         }
         return $this->response->noCache()->setJSON(['ok'=>true,'csrfTokenName'=>csrf_token(),'csrfToken'=>csrf_hash(),'maxUploadBytes'=>(new \Config\Storage())->maxUploadBytes(),'chunkBytes'=>$chunkBytes]);
     }
 
     public function upload()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $actor = session()->get();
-        if (!RolePolicy::allows($actor,'files.upload')) return $this->response->setStatusCode(403)->setJSON(['ok'=>false,'message'=>'Your account cannot upload files.']);
+        if (! RolePolicy::allows($actor, 'files.upload')) {
+            return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Your account cannot upload files.']);
+        }
         $csrf = csrf_hash();
         session()->close();
         @set_time_limit(0);
@@ -78,17 +103,23 @@ class ServerLibraryController extends BaseController
             $uploads = $this->uploads();
             if ($this->request->getPost('cancel_upload') === '1') {
                 $id = $this->request->getPost('chunk_id');
-                if (!is_string($id)) throw new RuntimeException('Invalid upload identifier.');
+                if (! is_string($id)) {
+                    throw new RuntimeException('Invalid upload identifier.');
+                }
                 return $this->response->noCache()->setJSON(array_merge(['ok'=>true,'csrfToken'=>$csrf], $uploads->chunks()->cancel((int)$actor['employee_id'],$id)));
             }
             $metadata = [];
             foreach (['file_name','folder_id','relative_path','upload_batch_id','audit_total','audit_item_id'] as $key) {
                 $value = $this->request->getPost($key);
-                if (is_array($value) || strlen((string)$value)>5000) throw new RuntimeException('Invalid upload details.');
+                if (is_array($value) || strlen((string) $value) > 5000) {
+                    throw new RuntimeException('Invalid upload details.');
+                }
                 $metadata[$key === 'file_name' ? 'name' : $key] = (string)$value;
             }
             $file = $this->request->getFile('file');
-            if ($file === null || !$file->isValid()) throw new RuntimeException('The upload is incomplete. Try again.');
+            if ($file === null || ! $file->isValid()) {
+                throw new RuntimeException('The upload is incomplete. Try again.');
+            }
             $process = function ($file) use ($uploads,$metadata,$actor): array {
                 try {
                     $payload = $uploads->receive($file,$metadata,$actor);
@@ -107,7 +138,9 @@ class ServerLibraryController extends BaseController
                 $offset = filter_var($this->request->getPost('chunk_offset'),FILTER_VALIDATE_INT);
                 $id = $this->request->getPost('chunk_id');
                 $limit = (new \Config\Storage())->maxUploadBytes();
-                if (!is_string($id) || $total === false || $offset === false || ($limit>0 && $total>$limit)) throw new RuntimeException('Invalid file size or upload identifier.');
+                if (! is_string($id) || $total === false || $offset === false || $limit > 0 && $total > $limit) {
+                    throw new RuntimeException('Invalid file size or upload identifier.');
+                }
                 $result = $uploads->chunks()->accept((int)$actor['employee_id'],$id,$total,$offset,$file->getTempName(),$metadata,$process);
             } else $result = $process($file);
             $result['payload']['csrfToken'] = $csrf;
@@ -125,7 +158,9 @@ class ServerLibraryController extends BaseController
 
     public function folders()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         session()->close();
         try {
             $folders = $this->fileManagementCatalog()->listFolders((string)$this->request->getGet('folder'), $this->readBudget());
@@ -135,10 +170,14 @@ class ServerLibraryController extends BaseController
 
     public function suggestions()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         session()->close();
         $query = trim(mb_substr((string)$this->request->getGet('q'),0,120));
-        if (mb_strlen($query)<2) return $this->response->noCache()->setJSON(['suggestions'=>[]]);
+        if (mb_strlen($query) < 2) {
+            return $this->response->noCache()->setJSON(['suggestions' => []]);
+        }
         try {
             $suggestions = $this->fileManagementCatalog()->suggestions((string)$this->request->getGet('folder'), $query, (string)$this->request->getGet('type'), $this->readBudget());
             return $this->response->noCache()->setJSON(['suggestions'=>$suggestions]);
@@ -147,13 +186,17 @@ class ServerLibraryController extends BaseController
 
     public function passport()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         session()->close();
         try {
             $relative = (string)$this->request->getGet('path');
             $this->library()->resolve($relative);
             $passport = $this->uploads()->state()['media'][$relative]['passport'] ?? null;
-            if (!$passport) throw new RuntimeException('No passport is available for this file.');
+            if (! $passport) {
+                throw new RuntimeException('No passport is available for this file.');
+            }
             return $this->response->download(basename($relative).'.passport.json',json_encode($passport,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR))->noCache();
         } catch (RuntimeException $exception) { return $this->response->setStatusCode(404)->setBody($exception->getMessage()); }
     }
@@ -168,14 +211,20 @@ class ServerLibraryController extends BaseController
 
     protected function access()
     {
-        if (session()->get('isLoggedIn') !== true) return redirect()->to(site_url('login'));
-        if (!RolePolicy::allows(session()->get(), 'files.view_all')) return $this->response->setStatusCode(403)->setBody('Server Library is unavailable for your account.');
+        if (session()->get('isLoggedIn') !== true) {
+            return redirect()->to(site_url('login'));
+        }
+        if (! RolePolicy::allows(session()->get(), 'files.view_all')) {
+            return $this->response->setStatusCode(403)->setBody('Server Library is unavailable for your account.');
+        }
         return null;
     }
 
     public function index()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $folder = (string)$this->request->getGet('folder');
         $search = trim(mb_substr((string)$this->request->getGet('q'),0,120));
         $type = strtolower((string)$this->request->getGet('type'));
@@ -217,7 +266,9 @@ class ServerLibraryController extends BaseController
 
     public function status()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $actor = session()->get();
         session()->close();
         $readable = false;
@@ -227,7 +278,9 @@ class ServerLibraryController extends BaseController
         if ($connected) {
             try {
                 $folder = $this->request->getGet('folder') ?? '';
-                if (!is_string($folder)) throw new RuntimeException('Invalid server folder.');
+                if (! is_string($folder)) {
+                    throw new RuntimeException('Invalid server folder.');
+                }
                 $this->library()->resolve($folder, true);
                 $readable = true;
                 $writable = $this->library()->writable($folder) && $this->library()->writable();
@@ -242,7 +295,9 @@ class ServerLibraryController extends BaseController
 
     public function counts()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         session()->close();
         $started = hrtime(true);
         try {
@@ -257,7 +312,9 @@ class ServerLibraryController extends BaseController
 
     public function files()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $canSend = RolePolicy::allows(session()->get(), 'files.assign');
         $canManage = RolePolicy::allows(session()->get(), 'files.manage');
         session()->close();
@@ -276,14 +333,18 @@ class ServerLibraryController extends BaseController
 
     public function media()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $canManage = RolePolicy::allows(session()->get(),'files.manage');
         session()->close();
         $started = hrtime(true);
         try {
             $path = $this->library()->resolve((string)$this->request->getGet('path'));
             $filename = basename($path);
-            if ($this->request->getGet('download') === '1') return $this->response->download($path,null)->setFileName($filename)->noCache();
+            if ($this->request->getGet('download') === '1') {
+                return $this->response->download($path, null)->setFileName($filename)->noCache();
+            }
             $mime = $this->mediaMimeType($path);
             if ($this->request->getGet('thumbnail') === '1') {
                 $image = is_string($mime) && str_starts_with($mime,'video/')
@@ -309,21 +370,27 @@ class ServerLibraryController extends BaseController
             }
             // Stream the original or a compatible cached preview without changing the server file.
             $size = filesize($path);
-            if (!$size) throw new RuntimeException('This file is empty or unavailable.');
+            if (! $size) {
+                throw new RuntimeException('This file is empty or unavailable.');
+            }
             $start = 0; $end = $size-1; $partial = false;
             $range = $this->request->getHeaderLine('Range');
             if (preg_match('/^bytes=(\d*)-(\d*)$/D',$range,$match) && ($match[1] !== '' || $match[2] !== '')) {
                 $partial = true;
                 $start = $match[1] === '' ? max(0,$size-(int)$match[2]) : (int)$match[1];
                 $end = $match[1] === '' || $match[2] === '' ? $end : min($end,(int)$match[2]);
-                if ($start > $end || $start >= $size) return $this->response->setStatusCode(416)->setHeader('Content-Range','bytes */'.$size)->setBody('Invalid range.');
+                if ($start > $end || $start >= $size) {
+                    return $this->response->setStatusCode(416)->setHeader('Content-Range', 'bytes */' . $size)->setBody('Invalid range.');
+                }
                 // Release the HTTP worker between browser playback requests.
                 if ($match[1] !== '' && $match[2] === '' && str_starts_with($mime, 'video/')) {
                     $end = min($end, $start + 4 * 1024 * 1024 - 1);
                 }
             }
             $response = new MediaStreamResponse($path,$mime,$start,$end-$start+1,$partial,strtoupper($this->request->getMethod())==='HEAD');
-            if ($partial) $response->setHeader('Content-Range',"bytes $start-$end/$size");
+            if ($partial) {
+                $response->setHeader('Content-Range', "bytes {$start}-{$end}/{$size}");
+            }
             return $response;
         } catch (RuntimeException $exception) {
             return $this->response->noCache()->setStatusCode(404)->setBody('Server file unavailable. Reconnect the server or refresh the folder.');
@@ -339,9 +406,13 @@ class ServerLibraryController extends BaseController
 
     public function send()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $actor = session()->get();
-        if (!RolePolicy::allows($actor,'files.assign')) return $this->response->setStatusCode(403)->setBody('Your account cannot send files.');
+        if (! RolePolicy::allows($actor, 'files.assign')) {
+            return $this->response->setStatusCode(403)->setBody('Your account cannot send files.');
+        }
         $paths = $this->request->getPost('paths');
         try {
             $delivery = (new ServerLibraryTransferService(db_connect(),$this->library(),service('storage')))->send(
@@ -357,13 +428,17 @@ class ServerLibraryController extends BaseController
 
     public function edit()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $action = (string) $this->request->getPost('action');
         $jsonFolder = $action === 'create-folder' && $this->request->isAJAX()
             && str_contains($this->request->getHeaderLine('Accept'), 'application/json');
         $actor = session()->get();
         $permission = $action === 'upload' ? 'files.upload' : 'files.manage';
-        if (! RolePolicy::allows($actor, $permission)) return $this->response->setStatusCode(403)->setBody('Your account cannot edit the Server Library.');
+        if (! RolePolicy::allows($actor, $permission)) {
+            return $this->response->setStatusCode(403)->setBody('Your account cannot edit the Server Library.');
+        }
         $folder = (string) $this->request->getPost('folder');
         $paths = $this->request->getPost('paths');
         $paths = is_array($paths) ? $paths : [];
@@ -373,7 +448,9 @@ class ServerLibraryController extends BaseController
             switch ($action) {
                 case 'create-folder': $editor->createFolder($folder, (string) $this->request->getPost('name')); break;
                 case 'rename':
-                    if (count($paths) !== 1 || ! is_string($paths[0] ?? null)) throw new RuntimeException('Select one item to rename.');
+                    if (count($paths) !== 1 || ! is_string($paths[0] ?? null)) {
+                        throw new RuntimeException('Select one item to rename.');
+                    }
                     $editor->rename($paths[0], (string) $this->request->getPost('name')); break;
                 case 'move': $editor->move($paths, (string) $this->request->getPost('destination')); break;
                 case 'tags': $editor->addTags($paths, explode(',', (string) $this->request->getPost('tags'))); break;
@@ -382,15 +459,21 @@ class ServerLibraryController extends BaseController
                 case 'upload':
                     $uploads = $this->request->getFileMultiple('files') ?? [];
                     $expected = (int) $this->request->getPost('expected_files');
-                    if ($expected > 0 && count($uploads) !== $expected) throw new RuntimeException('The server did not receive all selected files. Upload fewer files or increase PHP upload limits.');
+                    if ($expected > 0 && count($uploads) !== $expected) {
+                        throw new RuntimeException('The server did not receive all selected files. Upload fewer files or increase PHP upload limits.');
+                    }
                     $editor->upload($folder, $uploads); break;
                 default: throw new RuntimeException('Choose a supported server action.');
             }
         } catch (RuntimeException $exception) {
-            if ($jsonFolder) return $this->response->noCache()->setStatusCode(422)->setJSON(['ok'=>false, 'message'=>$exception->getMessage(), 'csrfToken'=>csrf_hash()]);
+            if ($jsonFolder) {
+                return $this->response->noCache()->setStatusCode(422)->setJSON(['ok' => false, 'message' => $exception->getMessage(), 'csrfToken' => csrf_hash()]);
+            }
             return redirect()->to(site_url($action === 'restore' ? 'workspace/trash' : 'workspace/server-library') . '?' . http_build_query(['folder'=>$folder]))->with('error', $exception->getMessage());
         } catch (\Throwable $exception) {
-            if ($jsonFolder) return $this->response->noCache()->setStatusCode(500)->setJSON(['ok'=>false, 'message'=>'The folder could not be created. Check the connection and try again.', 'csrfToken'=>csrf_hash()]);
+            if ($jsonFolder) {
+                return $this->response->noCache()->setStatusCode(500)->setJSON(['ok' => false, 'message' => 'The folder could not be created. Check the connection and try again.', 'csrfToken' => csrf_hash()]);
+            }
             log_message('error', 'Server Library edit failed: {message}', ['message'=>$exception->getMessage()]);
             return redirect()->to(site_url('workspace/server-library') . '?' . http_build_query(['folder'=>$folder]))->with('error', 'The server edit could not be completed. Check the connection and try again.');
         }
@@ -405,11 +488,17 @@ class ServerLibraryController extends BaseController
 
     public function post()
     {
-        if ($denied = $this->access()) return $denied;
-        if (!RolePolicy::allows(session()->get(), 'files.manage')) return $this->response->setStatusCode(403)->setBody('Your account cannot post files.');
+        if ($denied = $this->access()) {
+            return $denied;
+        }
+        if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+            return $this->response->setStatusCode(403)->setBody('Your account cannot post files.');
+        }
         $actor = session()->get();
         $previousLimit = (int) ini_get('max_execution_time');
-        if ($previousLimit > 0 && $previousLimit < 300) set_time_limit(300);
+        if ($previousLimit > 0 && $previousLimit < 300) {
+            set_time_limit(300);
+        }
         session()->close();
         $failure = null;
         try {
@@ -424,33 +513,57 @@ class ServerLibraryController extends BaseController
         } finally {
             // Reopen only to persist feedback; copying must not block other tabs.
             session()->start();
-            if ((int) ini_get('max_execution_time') !== $previousLimit) set_time_limit($previousLimit);
+            if ((int) ini_get('max_execution_time') !== $previousLimit) {
+                set_time_limit($previousLimit);
+            }
         }
-        if ($failure !== null) return redirect()->to(site_url('workspace/server-library') . '?' . http_build_query(['folder'=>(string)$this->request->getPost('folder')]))->with('error', $failure);
+        if ($failure !== null) {
+            return redirect()->to(site_url('workspace/server-library') . '?' . http_build_query(['folder' => (string) $this->request->getPost('folder')]))->with('error', $failure);
+        }
         $this->recordEdit('post', $paths);
         return redirect()->to(site_url('workspace/published-files'))->with('message', 'Posted to GreyhoundHub. App admins can now edit and publish it.');
     }
 
     public function downloadSelected()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $zipPath = null;
         try {
             $paths = $this->request->getGet('paths');
-            if (!is_array($paths) || !$paths || count($paths) > 50 || count(array_filter($paths, 'is_string')) !== count($paths)) throw new RuntimeException('Choose between 1 and 50 files.');
-            if (!class_exists(\ZipArchive::class)) throw new RuntimeException('ZIP downloads are unavailable on this server.');
+            if (! is_array($paths) || ! $paths || count($paths) > 50 || count(array_filter($paths, 'is_string')) !== count($paths)) {
+                throw new RuntimeException('Choose between 1 and 50 files.');
+            }
+            if (! class_exists(\ZipArchive::class)) {
+                throw new RuntimeException('ZIP downloads are unavailable on this server.');
+            }
             $files = [];
-            foreach (array_unique($paths) as $path) $files[$path] = $this->library()->resolve($path);
+            foreach (array_unique($paths) as $path) {
+                $files[$path] = $this->library()->resolve($path);
+            }
             $zipPath = tempnam(WRITEPATH . 'cache', 'server-download-');
-            if ($zipPath === false) throw new RuntimeException('The download could not be prepared.');
+            if ($zipPath === false) {
+                throw new RuntimeException('The download could not be prepared.');
+            }
             $zip = new \ZipArchive();
-            if ($zip->open($zipPath, \ZipArchive::OVERWRITE) !== true) throw new RuntimeException('The download could not be prepared.');
+            if ($zip->open($zipPath, \ZipArchive::OVERWRITE) !== true) {
+                throw new RuntimeException('The download could not be prepared.');
+            }
             try {
-                foreach ($files as $relative=>$absolute) if (!$zip->addFile($absolute, $relative)) throw new RuntimeException('A selected file could not be read.');
+                foreach ($files as $relative => $absolute) {
+                    if (! $zip->addFile($absolute, $relative)) {
+                        throw new RuntimeException('A selected file could not be read.');
+                    }
+                }
             } finally { $closed = $zip->close(); }
-            if (!$closed) throw new RuntimeException('The archive could not be completed. Try again.');
+            if (! $closed) {
+                throw new RuntimeException('The archive could not be completed. Try again.');
+            }
         } catch (\Throwable $exception) {
-            if (is_string($zipPath) && is_file($zipPath)) unlink($zipPath);
+            if (is_string($zipPath) && is_file($zipPath)) {
+                unlink($zipPath);
+            }
             return redirect()->to(site_url('workspace/server-library'))->with('error', $exception instanceof RuntimeException ? $exception->getMessage() : 'The download could not be prepared.');
         }
         register_shutdown_function(static function () use ($zipPath): void { if (is_file($zipPath)) unlink($zipPath); });
@@ -466,8 +579,12 @@ class ServerLibraryController extends BaseController
 
     public function trash()
     {
-        if ($denied = $this->access()) return $denied;
-        if (! RolePolicy::allows(session()->get(), 'files.manage')) return $this->response->setStatusCode(403)->setBody('Trash is unavailable for your account.');
+        if ($denied = $this->access()) {
+            return $denied;
+        }
+        if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+            return $this->response->setStatusCode(403)->setBody('Trash is unavailable for your account.');
+        }
         return redirect()->to(site_url('workspace/trash'));
     }
 }

@@ -10,7 +10,9 @@ final class ServerLibraryPresentation
         if ((new \Config\Storage())->centralized()) {
             $key = (new ServerLibraryService())->catalogSourceKey();
             $row = db_connect()->table('server_media')->where('source_key',$key)->where('path_hash',hash('sha256',$path))->where('is_deleted',0)->get()->getRowArray();
-            if ($row) return 'm' . $row['id'];
+            if ($row) {
+                return 'm' . $row['id'];
+            }
         }
         return bin2hex($path);
     }
@@ -19,7 +21,9 @@ final class ServerLibraryPresentation
     {
         if ((new \Config\Storage())->centralized() && preg_match('/^m([1-9][0-9]*)$/D',$token,$match)) {
             $row = db_connect()->table('server_media')->where('id',$match[1])->where('source_key',(new ServerLibraryService())->catalogSourceKey())->where('is_deleted',0)->get()->getRowArray();
-            if (!$row) throw new \RuntimeException('This server item is unavailable.');
+            if (! $row) {
+                throw new \RuntimeException('This server item is unavailable.');
+            }
             return $row['path'];
         }
         if ($token === '' || strlen($token) > 8192 || strlen($token) % 2 !== 0 || !ctype_xdigit($token)) {

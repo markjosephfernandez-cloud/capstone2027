@@ -45,20 +45,28 @@ class WorkspaceController extends BaseController
         $type = trim(mb_substr((string) $this->request->getGet('type'), 0, 100));
         $stage = trim((string) $this->request->getGet('stage'));
         $distribution = trim((string) $this->request->getGet('distribution'));
-        if ($type !== '') $files->where('f.filetype', $type);
+        if ($type !== '') {
+            $files->where('f.filetype', $type);
+        }
         if (in_array($stage, ['raw', 'processed', 'published', 'department'], true)) {
             $stage === 'published' ? $files->where('f.release_status', 'published') : ($stage === 'department' ? $files->where('f.distribution_type', 'department') : $files->where('f.storage_stage', $stage));
         }
-        if (in_array($distribution, ['mobile_app', 'department'], true)) $files->where('f.distribution_type', $distribution);
+        if (in_array($distribution, ['mobile_app', 'department'], true)) {
+            $files->where('f.distribution_type', $distribution);
+        }
 
         // Search the whole accessible library, just like submitting a search.
         // Fetch distinct matching values, not the first page of matching files.
         $suggestions = [];
         $add = static function (string $value, string $kind) use (&$suggestions, $query): void {
             $value = trim($value);
-            if ($value === '' || mb_strlen($value) > 120 || mb_stripos($value, $query) === false) return;
+            if ($value === '' || mb_strlen($value) > 120 || mb_stripos($value, $query) === false) {
+                return;
+            }
             $key = mb_strtolower($value);
-            if (! isset($suggestions[$key])) $suggestions[$key] = ['value' => $value, 'kind' => $kind];
+            if (! isset($suggestions[$key])) {
+                $suggestions[$key] = ['value' => $value, 'kind' => $kind];
+            }
         };
         foreach (['name', 'path'] as $field) {
             foreach ((clone $folders)->select($field)->distinct()->like($field, $query)->orderBy($field)->limit(8)->get()->getResultArray() as $row) {
@@ -75,7 +83,9 @@ class WorkspaceController extends BaseController
         foreach ($fields as $field => $kind) {
             foreach ((clone $files)->from($fileTable, true)->select($field . ' AS value')->distinct()->like($field, $query)->orderBy($field)->limit($kind === 'Tag' ? 100 : 8)->get()->getResultArray() as $row) {
                 $values = $kind === 'Tag' ? explode(',', (string) $row['value']) : [(string) $row['value']];
-                foreach ($values as $value) $add($value, $kind);
+                foreach ($values as $value) {
+                    $add($value, $kind);
+                }
             }
         }
         if (! $departmentUser && $db->tableExists('passports')) {
@@ -83,7 +93,9 @@ class WorkspaceController extends BaseController
                 $values = (clone $files)->from($fileTable, true)->join('passports p', 'p.media_id = f.id')->select($field . ' AS value')->distinct()->like($field, $query);
                 // A reviewed classification supersedes the historical passport event.
                 if ($kind === 'Event') $values->groupStart()->where('f.classification', null)->orWhere('f.classification', '')->groupEnd();
-                foreach ($values->orderBy($field)->limit(8)->get()->getResultArray() as $row) $add((string) $row['value'], $kind);
+                foreach ($values->orderBy($field)->limit(8)->get()->getResultArray() as $row) {
+                    $add((string) $row['value'], $kind);
+                }
             }
         }
 
@@ -118,7 +130,9 @@ class WorkspaceController extends BaseController
         $fileTable = $departmentUser ? 'department_files' : 'files';
         $folderTable = $departmentUser ? 'department_folders' : 'folder';
         $folderModel = (new FolderModel())->setTable($folderTable)->where('is_deleted', 0);
-        if ($departmentUser) $folderModel->where('department', (string)($actor['department'] ?? ''));
+        if ($departmentUser) {
+            $folderModel->where('department', (string) ($actor['department'] ?? ''));
+        }
         $allActiveFolders = $folderModel->orderBy('name', 'ASC')->findAll();
         $allActiveFolderById = [];
         $activeChildCounts = [];
@@ -149,7 +163,9 @@ class WorkspaceController extends BaseController
         } else {
             $folderQuery->where('fo.parent_id', $folderId);
         }
-        if ($departmentUser) $folderQuery->where('fo.department', (string)($actor['department'] ?? ''));
+        if ($departmentUser) {
+            $folderQuery->where('fo.department', (string) ($actor['department'] ?? ''));
+        }
         $folders = $folderQuery
             ->groupBy('fo.id, fo.name, fo.description, fo.path, fo.created_at')
             ->orderBy('fo.name', 'ASC')
@@ -185,11 +201,15 @@ class WorkspaceController extends BaseController
         $matchingFolderIds = $query === '' ? [] : $this->matchingFolderIds($allActiveFolders, $folderById, $query);
 
         $files = $db->table($fileTable . ' f')->select('f.*')->where('f.is_deleted', 0);
-        if ($departmentUser) $files->where('f.department', (string)($actor['department'] ?? ''));
+        if ($departmentUser) {
+            $files->where('f.department', (string) ($actor['department'] ?? ''));
+        }
         if ($query !== '') {
             if ($departmentUser) {
                 $files->groupStart()->like('f.filename', $query)->orLike('f.display_title', $query)->orLike('f.tags', $query)->orLike('f.description', $query);
-                if ($matchingFolderIds !== []) $files->orWhereIn('f.folder_id', $matchingFolderIds);
+                if ($matchingFolderIds !== []) {
+                    $files->orWhereIn('f.folder_id', $matchingFolderIds);
+                }
                 $files->groupEnd();
             } else $files = $this->applyFileManagementSearch($files, $query, $matchingFolderIds, $db->tableExists('passports'));
         } elseif ($folderId === null) {
@@ -215,7 +235,9 @@ class WorkspaceController extends BaseController
         }
 
         $fileTypes = $db->table($fileTable)->select('filetype')->where('is_deleted', 0)->where('filetype IS NOT NULL', null, false);
-        if ($departmentUser) $fileTypes->where('department', (string)($actor['department'] ?? ''));
+        if ($departmentUser) {
+            $fileTypes->where('department', (string) ($actor['department'] ?? ''));
+        }
         if ($query === '') {
             if ($folderId === null) {
                 $fileTypes->where('folder_id IS NULL', null, false);
@@ -281,7 +303,9 @@ class WorkspaceController extends BaseController
 
     public function upload()
     {
-        if ($this->request->getPost('cancel_upload') === '1') return $this->cancelUpload();
+        if ($this->request->getPost('cancel_upload') === '1') {
+            return $this->cancelUpload();
+        }
         if ($this->request->getPost('chunk_upload') === '1') {
             return $this->uploadChunk();
         }
@@ -294,7 +318,9 @@ class WorkspaceController extends BaseController
             return $this->response->setStatusCode(403)->setJSON(['ok' => false, 'message' => 'Please sign in with permission to upload files.']);
         }
         $id = $this->request->getPost('chunk_id');
-        if (! is_string($id)) return $this->uploadResult([], ['The upload identifier is invalid.']);
+        if (! is_string($id)) {
+            return $this->uploadResult([], ['The upload identifier is invalid.']);
+        }
         try {
             $result = (new \App\Services\ChunkUploadService())->cancel((int) session()->get('employee_id'), $id);
             return $this->response->setJSON(array_merge(['ok' => true, 'csrfToken' => csrf_hash()], $result));
@@ -310,7 +336,9 @@ class WorkspaceController extends BaseController
         }
         try {
             $file = $this->request->getFile('file');
-            if ($file === null) throw new RuntimeException('The upload part is missing.');
+            if ($file === null) {
+                throw new RuntimeException('The upload part is missing.');
+            }
             $this->assertUploadReady($file);
             $total = filter_var($this->request->getPost('file_size'), FILTER_VALIDATE_INT);
             $offset = filter_var($this->request->getPost('chunk_offset'), FILTER_VALIDATE_INT);
@@ -322,7 +350,9 @@ class WorkspaceController extends BaseController
             $metadata = [];
             foreach (['file_name', 'folder_id', 'relative_path', 'description', 'upload_batch_id'] as $field) {
                 $value = $this->request->getPost($field);
-                if (is_array($value) || mb_strlen((string) $value) > 5000) throw new RuntimeException('Upload details are invalid.');
+                if (is_array($value) || mb_strlen((string) $value) > 5000) {
+                    throw new RuntimeException('Upload details are invalid.');
+                }
                 $metadata[$field === 'file_name' ? 'name' : $field] = (string) $value;
             }
             $result = (new \App\Services\ChunkUploadService())->accept(
@@ -963,6 +993,50 @@ class WorkspaceController extends BaseController
         return $this->streamMediaPreview($file);
     }
 
+    public function serverTrashFolder(string $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+        $actor = session()->get();
+        if (!RolePolicy::allows($actor, 'files.manage')) {
+            return $this->response->setStatusCode(403)->setBody('Trash is restricted to Creative Staff.');
+        }
+        $data = $this->pageData('trash', 'Deleted server folder', []);
+        session()->close();
+        try {
+            $child = $this->request->getGet('child') ?? '';
+            if (! is_string($child)) {
+                throw new RuntimeException('Invalid Trash path.');
+            }
+            $contents = $this->serverTrashEditor()->previewFolder($id, $child);
+        } catch (RuntimeException) {
+            return $this->response->setStatusCode(404)->setBody('Trash folder unavailable.');
+        }
+        return view('workspace/trash_server_folder', $data + $contents + ['trashId'=>$id, 'child'=>$child]);
+    }
+
+    public function serverTrashPreview(string $id)
+    {
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+        if (!RolePolicy::allows(session()->get(), 'files.manage')) {
+            return $this->response->setStatusCode(403)->setBody('Trash previews are restricted to Creative Staff.');
+        }
+        session()->close();
+        try {
+            $child = $this->request->getGet('child') ?? '';
+            if (! is_string($child)) {
+                throw new RuntimeException('Invalid Trash path.');
+            }
+            $path = $this->serverTrashEditor()->previewPath($id, $child);
+        } catch (RuntimeException) {
+            return $this->response->noCache()->setStatusCode(404)->setBody('Trash preview unavailable.');
+        }
+        return $this->resolvedMediaPreview($path);
+    }
+
     public function moveToTrash(int $id)
     {
         if (($redirect = $this->requireLogin()) !== null) {
@@ -1343,11 +1417,17 @@ class WorkspaceController extends BaseController
 
     public function viewed(int $id)
     {
-        if (($redirect = $this->requireLogin()) !== null) return $redirect;
-        if (!(new \Config\Storage())->centralized()) return $this->response->setStatusCode(204);
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
+        if (! (new \Config\Storage())->centralized()) {
+            return $this->response->setStatusCode(204);
+        }
         $actor = session()->get();
         $file = $this->actorFileModel()->where('is_deleted',0)->find($id);
-        if (!$file || !$this->canAccessMedia($file,$actor)) return $this->response->setStatusCode(404);
+        if (! $file || ! $this->canAccessMedia($file, $actor)) {
+            return $this->response->setStatusCode(404);
+        }
         if (RolePolicy::role($actor) === 'department') {
             db_connect()->table('department_recent')->onConstraint(['employee_id','department_file_id'])->upsert([
                 'employee_id'=>(int)$actor['employee_id'],'department_file_id'=>$id,'viewed_at'=>gmdate('Y-m-d H:i:s')]);
@@ -1359,7 +1439,9 @@ class WorkspaceController extends BaseController
 
     public function recent()
     {
-        if (($redirect = $this->requireLogin()) !== null) return $redirect;
+        if (($redirect = $this->requireLogin()) !== null) {
+            return $redirect;
+        }
         if ((new \Config\Storage())->centralized() && RolePolicy::role(session()->get()) === 'department') {
             session()->close();
             $rows = db_connect()->table('department_recent r')->select('f.id, f.filepath AS path, f.filename, f.folder_id, r.viewed_at')
@@ -1376,7 +1458,9 @@ class WorkspaceController extends BaseController
         if (($redirect = $this->requireLogin()) !== null) {
             return $redirect;
         }
-        if (! RolePolicy::allows(session()->get(), 'files.manage')) return redirect()->to(site_url('workspace/file-management'))->with('error', 'Recent repository activity is restricted to Creative Staff.');
+        if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Recent repository activity is restricted to Creative Staff.');
+        }
         session()->close();
 
         $perPage = 20;
@@ -1386,7 +1470,9 @@ class WorkspaceController extends BaseController
             ->select('f.id, f.display_title, f.filetype, f.size, f.dateupload, f.last_action, f.last_action_at, f.tags, u.name AS uploader_name, COALESCE(f.last_action_at, f.dateupload) AS activity_at', false)
             ->join('user u', 'u.employee_id = f.employee_id', 'left')
             ->where('f.is_deleted', 0);
-        if ($department) $recentQuery->where('f.department', (string)session()->get('department'));
+        if ($department) {
+            $recentQuery->where('f.department', (string) session()->get('department'));
+        }
         $total = $recentQuery->countAllResults(false);
         $totalPages = max(1, (int) ceil($total / $perPage));
         $page = min($page, $totalPages);
@@ -1407,7 +1493,9 @@ class WorkspaceController extends BaseController
         if (($redirect = $this->requireLogin()) !== null) {
             return $redirect;
         }
-        if (! RolePolicy::allows(session()->get(), 'files.manage')) return redirect()->to(site_url('workspace/file-management'))->with('error', 'Repository discovery is restricted to Creative Staff.');
+        if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Repository discovery is restricted to Creative Staff.');
+        }
         // This page only reads data; release navigation requests from the same session.
         $reviewSuccess = session()->getFlashdata('success');
         $reviewError = session()->getFlashdata('error');
@@ -1415,7 +1503,9 @@ class WorkspaceController extends BaseController
 
         $term  = trim(mb_substr((string) $this->request->getGet('q'), 0, 120));
         $aiResult = (string) $this->request->getGet('ai_result');
-        if (! in_array($aiResult, ['needs_review', 'different', 'dominant', 'reviewed', 'not_applicable'], true)) $aiResult = '';
+        if (! in_array($aiResult, ['needs_review', 'different', 'dominant', 'reviewed', 'not_applicable'], true)) {
+            $aiResult = '';
+        }
         $perPage = 20;
         $page = max(1, (int) $this->request->getGet('page'));
         $files = db_connect()->table('files f')
@@ -1453,7 +1543,9 @@ class WorkspaceController extends BaseController
                 ->whereIn('f.id', array_column($rankedPage, 'id'))->get()->getResultArray();
             $detailsById = array_column($details, null, 'id');
             foreach ($rankedPage as $file) {
-                if (isset($detailsById[$file['id']])) $results[] = array_merge($detailsById[$file['id']], $file);
+                if (isset($detailsById[$file['id']])) {
+                    $results[] = array_merge($detailsById[$file['id']], $file);
+                }
             }
         }
 
@@ -1484,9 +1576,10 @@ class WorkspaceController extends BaseController
 
         try {
             $paths = $this->request->getPost('file_paths');
-            if (!is_array($paths) || !$paths) throw new RuntimeException('Select files to scan first.');
-            $result = service('serverScan')->begin((int) ($actor['employee_id'] ?? 0), $paths, \App\Services\SelectedImageScan::TASKS, (string) ($this->request->getPost('previous_job_id') ?? ''));
-            service('audit')->record($actor, $this->request, 'metadata', 'SERVER_SCAN_STARTED', 'folder', (int) $result['destinationFolderId'], 'Started an iFound server scan containing ' . (int) $result['total'] . ' file(s).');
+            if (! is_array($paths) || ! $paths) {
+                throw new RuntimeException('Select files to scan first.');
+            }
+            $result = service('serverScan')->begin((int) ($actor['employee_id'] ?? 0), $paths, \App\Services\SelectedImageScan::TASKS, (string) ($this->request->getPost('previous_job_id') ?? ''), (int) $this->request->getPost('selection_total'));
             return $this->iFoundScanResponse($result);
         } catch (RuntimeException $exception) {
             return $this->iFoundScanResponse(['ok' => false, 'message' => $exception->getMessage()], 422);
@@ -1498,8 +1591,12 @@ class WorkspaceController extends BaseController
 
     public function browseIFoundScan()
     {
-        if (session()->get('isLoggedIn') !== true) return $this->iFoundScanResponse(['ok'=>false, 'message'=>'Sign in again to browse files.'], 401);
-        if (!RolePolicy::allows(session()->get(), 'files.manage')) return $this->iFoundScanResponse(['ok'=>false, 'message'=>'Your account cannot scan files.'], 403);
+        if (session()->get('isLoggedIn') !== true) {
+            return $this->iFoundScanResponse(['ok' => false, 'message' => 'Sign in again to browse files.'], 401);
+        }
+        if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+            return $this->iFoundScanResponse(['ok' => false, 'message' => 'Your account cannot scan files.'], 403);
+        }
         session()->close();
         try {
             return $this->iFoundScanResponse(service('serverScan')->browse((string) $this->request->getGet('folder'), mb_substr((string) $this->request->getGet('q'), 0, 120), (int) $this->request->getGet('page')));
@@ -1534,10 +1631,7 @@ class WorkspaceController extends BaseController
             $jobId = trim((string) $this->request->getPost('job_id'));
             session()->close();
             @set_time_limit(150);
-            $result = service('serverScan')->processNext($jobId, (int) ($actor['employee_id'] ?? 0));
-            if (! empty($result['fileId'])) {
-                service('audit')->record($actor, $this->request, 'metadata', 'SERVER_FILE_SCANNED', 'file', (int) $result['fileId'], (string) $result['message']);
-            }
+            $result = service('serverScan')->processNext($jobId, (int) ($actor['employee_id'] ?? 0), $actor);
             return $this->iFoundScanResponse($result);
         } catch (RuntimeException $exception) {
             return $this->iFoundScanResponse(['ok' => false, 'message' => $exception->getMessage()], 422);
@@ -1570,11 +1664,17 @@ class WorkspaceController extends BaseController
     private function selectedAnalysisResponse(bool $status)
     {
         $actor = session()->get();
-        if (($actor['isLoggedIn'] ?? false) !== true) return $this->response->setStatusCode(401)->setJSON(['message'=>'Sign in again to analyze images.']);
-        if (! RolePolicy::allows($actor, 'files.manage')) return $this->response->setStatusCode(403)->setJSON(['message'=>'Image analysis requires Creative Staff access.']);
+        if (($actor['isLoggedIn'] ?? false) !== true) {
+            return $this->response->setStatusCode(401)->setJSON(['message' => 'Sign in again to analyze images.']);
+        }
+        if (! RolePolicy::allows($actor, 'files.manage')) {
+            return $this->response->setStatusCode(403)->setJSON(['message' => 'Image analysis requires Creative Staff access.']);
+        }
         $input = $status ? $this->request->getGet('file_ids') : $this->request->getPost('file_ids');
         $ids = array_values(array_unique(array_filter(array_map('intval', (array) $input), static fn ($id) => $id > 0)));
-        if (!$ids || count($ids) > 100) return $this->response->setStatusCode(422)->setJSON(['message'=>'Select between 1 and 100 images.']);
+        if (! $ids || count($ids) > 100) {
+            return $this->response->setStatusCode(422)->setJSON(['message' => 'Select between 1 and 100 images.']);
+        }
         session()->close();
         try {
             $queue = new \App\Services\IFoundAnalysisQueue();
@@ -1653,7 +1753,9 @@ class WorkspaceController extends BaseController
         }
 
         $classification = $eventName !== '' ? $eventName : 'Unclassified university media';
-        if ((new \Config\Storage())->centralized()) (new \App\Services\CentralMediaService())->syncReview($id);
+        if ((new \Config\Storage())->centralized()) {
+            (new \App\Services\CentralMediaService())->syncReview($id);
+        }
         service('audit')->record($actor, $this->request, 'metadata', 'AI_CLASSIFICATION_REVIEWED', 'file', $id, 'Reviewed iFound classification for "' . $file['filename'] . '" as ' . $classification . '.');
 
         return $this->reviewResponse('success', 'Review saved. Your final classification and tags have been updated.');
@@ -1746,7 +1848,9 @@ class WorkspaceController extends BaseController
         }
 
         foreach ($fileIds as $id) {
-            if ((new \Config\Storage())->centralized()) (new \App\Services\CentralMediaService())->syncReview($id);
+            if ((new \Config\Storage())->centralized()) {
+                (new \App\Services\CentralMediaService())->syncReview($id);
+            }
         service('audit')->record($actor, $this->request, 'metadata', 'AI_CLASSIFICATION_REVIEWED', 'file', $id, 'Reviewed iFound classification for "' . $filesById[$id]['filename'] . '" as ' . $classification . '.');
         }
 
@@ -1756,7 +1860,9 @@ class WorkspaceController extends BaseController
     private function reviewResponse(string $kind, string $message)
     {
         if ($this->request->isAJAX() && str_contains($this->request->getHeaderLine('Accept'), 'application/json')) {
-            if ($kind === 'success') session()->setFlashdata('success', $message);
+            if ($kind === 'success') {
+                session()->setFlashdata('success', $message);
+            }
             return $this->response->noCache()->setStatusCode($kind === 'success' ? 200 : 422)
                 ->setJSON(['ok'=>$kind === 'success', 'message'=>$message, 'csrfToken'=>csrf_hash()]);
         }
@@ -1774,7 +1880,10 @@ class WorkspaceController extends BaseController
         return redirect()->to($url);
     }
 
-    /** @param list<int> $fileIds @return array<int, list<string>> */
+    /**
+     * @param list<int> $fileIds
+     * @return array<int, list<string>>
+     */
     private function reviewAdditionalTags(mixed $input, array $fileIds): array
     {
         if ($input === null) {
@@ -1810,7 +1919,11 @@ class WorkspaceController extends BaseController
         return $result;
     }
 
-    /** @param array<string, mixed> $file @param list<string> $additionalTags @return list<string> */
+    /**
+     * @param array<string, mixed> $file
+     * @param list<string> $additionalTags
+     * @return list<string>
+     */
     private function reviewedEventTags(array $file, ?string $eventName, array $additionalTags = []): array
     {
         $eventTags = array_keys((new GreyhoundAi())->eventKeywords);
@@ -1849,7 +1962,9 @@ class WorkspaceController extends BaseController
         if (($redirect = $this->requireLogin()) !== null) {
             return $redirect;
         }
-        if (! RolePolicy::allows(session()->get(), 'files.manage')) return redirect()->to(site_url('workspace/file-management'))->with('error', 'Trash is restricted to Creative Staff.');
+        if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+            return redirect()->to(site_url('workspace/file-management'))->with('error', 'Trash is restricted to Creative Staff.');
+        }
 
         $actor = session()->get();
         $purgedCount = $this->trashService()->purgeExpiredTrash($actor, $this->request);
@@ -1866,13 +1981,19 @@ class WorkspaceController extends BaseController
             $serverItems = $serverEditor->trashItems();
             $actorIds = array_values(array_unique(array_filter(array_column($serverItems, 'deleted_by'))));
             $names = $actorIds === [] ? [] : array_column($db->table('user')->select('employee_id, name')->whereIn('employee_id', $actorIds)->get()->getResultArray(), 'name', 'employee_id');
-            foreach ($serverItems as &$serverItem) $serverItem['deleted_by_name'] = $names[$serverItem['deleted_by']] ?? 'Unknown';
+            foreach ($serverItems as &$serverItem) {
+                $serverItem['deleted_by_name'] = $names[$serverItem['deleted_by']] ?? 'Unknown';
+            }
             unset($serverItem);
         } catch (RuntimeException $exception) {
             $serverTrashError = 'Server items are unavailable. Connect the server share to view or restore them. Local Trash is still available.';
         }
         $fileTypes = $db->table('files f')->select('f.filetype')->join('trashfiles tf', 'tf.file_id = f.id', 'inner')->where('f.is_deleted', 1)->where('tf.folder_root_id IS NULL', null, false)->where('f.filetype !=', '')->distinct()->orderBy('f.filetype', 'ASC')->get()->getResultArray();
-        foreach ($serverItems as $serverItem) if ($serverItem['filetype'] !== '') $fileTypes[] = ['filetype'=>$serverItem['filetype']];
+        foreach ($serverItems as $serverItem) {
+            if ($serverItem['filetype'] !== '') {
+                $fileTypes[] = ['filetype' => $serverItem['filetype']];
+            }
+        }
         $fileTypes = array_values(array_column($fileTypes, null, 'filetype'));
         usort($fileTypes, static fn ($a, $b) => strcasecmp($a['filetype'], $b['filetype']));
         $validTypes = array_map(static fn (array $row): string => (string) $row['filetype'], $fileTypes);
@@ -1898,13 +2019,13 @@ class WorkspaceController extends BaseController
         }
 
         $trashQuery = $db->table('files f')
-            ->select('f.id, f.display_title, f.filename, f.filetype, f.size, f.dateupload, f.last_action_at, tf.deleted_at, tf.reason, u.name AS deleted_by_name')
+            ->select('f.id, f.display_title, f.filename, f.filetype, f.size, f.dateupload, f.last_action_at, tf.original_filepath, tf.deleted_at, tf.reason, u.name AS deleted_by_name')
             ->join('trashfiles tf', 'tf.file_id = f.id', 'inner')
             ->join('user u', 'u.employee_id = tf.deleted_by', 'left')
             ->where('f.is_deleted', 1)
             ->where('tf.folder_root_id IS NULL', null, false);
         if ($query !== '') {
-            $trashQuery->groupStart()->like('f.display_title', $query)->orLike('tf.reason', $query)->orLike('u.name', $query)->groupEnd();
+            $trashQuery->groupStart()->like('f.display_title', $query)->orLike('f.filename', $query)->orLike('tf.original_filepath', $query)->orLike('tf.reason', $query)->orLike('u.name', $query)->groupEnd();
         }
         if ($type !== '') {
             $trashQuery->where('f.filetype', $type);
@@ -2034,7 +2155,10 @@ class WorkspaceController extends BaseController
         return RolePolicy::allows($actor, 'files.manage');
     }
 
-    /** @param array<string, mixed>|null $file @param array<string, mixed>|null $actor */
+    /**
+     * @param array<string, mixed>|null $file
+     * @param array<string, mixed>|null $actor
+     */
     private function streamMediaPreview(?array $file, ?array $actor = null)
     {
         if ($file === null) {
@@ -2049,6 +2173,11 @@ class WorkspaceController extends BaseController
         } catch (RuntimeException) {
             return $this->response->setStatusCode(404)->setBody('Media preview not found.');
         }
+        return $this->resolvedMediaPreview($path);
+    }
+
+    private function resolvedMediaPreview(string $path)
+    {
         $mimeType = $this->previewMimeType($path);
         $allowed = [
             'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
@@ -2058,10 +2187,15 @@ class WorkspaceController extends BaseController
         if (! is_string($mimeType) || ! in_array($mimeType, $allowed, true)) {
             return $this->response->setStatusCode(415)->setBody('Preview is unavailable for this file type.');
         }
+        if ($this->request->getGet('thumbnail') === '1') {
+            return $this->thumbnailResponse($path, true);
+        }
         if (str_starts_with($mimeType, 'video/')) {
             try {
                 $preview = (new \App\Services\VideoPreviewService())->forFile($path);
-                if ($preview !== $path) $mimeType = 'video/mp4';
+                if ($preview !== $path) {
+                    $mimeType = 'video/mp4';
+                }
                 $path = $preview;
             } catch (RuntimeException $exception) {
                 log_message('warning', 'Video preview unavailable: {message}', ['message' => $exception->getMessage()]);
@@ -2075,7 +2209,9 @@ class WorkspaceController extends BaseController
     private function previewMimeType(string $path): string|false
     {
         $stream = @fopen($path, 'rb');
-        if ($stream === false) return false;
+        if ($stream === false) {
+            return false;
+        }
         try {
             $header = @stream_get_contents($stream, 65536);
             return $header === false || $header === '' ? false : (new \finfo(FILEINFO_MIME_TYPE))->buffer($header);
@@ -2085,12 +2221,14 @@ class WorkspaceController extends BaseController
     }
 
     /** Called only after authentication, authorization and storage path validation. */
-    private function thumbnailResponse(string $path)
+    private function thumbnailResponse(string $path, bool $reportUnavailable = false)
     {
         // Image processing must not block navigation requests from the same session.
         session()->close();
         try {
-            $thumbnail = (new \App\Services\ThumbnailService())->forFile($path);
+            $thumbnail = str_starts_with((string) $this->previewMimeType($path), 'video/')
+                ? (new \App\Services\VideoPreviewService())->thumbnailForFile($path)
+                : (new \App\Services\ThumbnailService())->forFile($path);
             $etag = '"' . pathinfo($thumbnail, PATHINFO_FILENAME) . '"';
             // Revalidate access on each request, while allowing reuse of cached bytes.
             $response = $this->response
@@ -2106,13 +2244,18 @@ class WorkspaceController extends BaseController
                 return $response->setStatusCode(304)->setBody('');
             }
             $body = file_get_contents($thumbnail);
-            if ($body === false) throw new RuntimeException('Thumbnail unavailable.');
+            if ($body === false) {
+                throw new RuntimeException('Thumbnail unavailable.');
+            }
             return $response->setContentType('image/jpeg')->setHeader('Content-Length', (string) strlen($body))->setBody($body);
         } catch (RuntimeException $exception) {
             log_message('warning', 'Thumbnail unavailable: {message}', ['message' => $exception->getMessage()]);
+            if ($reportUnavailable) {
+                return $this->response->noCache()->setStatusCode(503)->setBody('Thumbnail unavailable.');
+            }
             // Keep cards lightweight even when GD cannot process a particular image.
             return $this->response->noCache()->setContentType('image/svg+xml')->setBody(
-                '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260"><rect width="400" height="260" fill="#f0f4f9"/><path d="M160 90h80v70h-80z M160 150l25-25 20 20 15-15 20 25" fill="none" stroke="#73809a" stroke-width="5"/><text x="200" y="195" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#5f6b7d">Open image to preview</text></svg>'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260"><rect width="400" height="260" fill="#f0f4f9"/><path d="M160 90h80v70h-80z M160 150l25-25 20 20 15-15 20 25" fill="none" stroke="#73809a" stroke-width="5"/><text x="200" y="195" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#5f6b7d">Preview unavailable</text></svg>'
             );
         }
     }
@@ -2172,7 +2315,10 @@ class WorkspaceController extends BaseController
         return RolePolicy::allows($actor, 'files.delete_permanently');
     }
 
-    /** @param array<string, mixed> $file @param array<string, mixed> $actor */
+    /**
+     * @param array<string, mixed> $file
+     * @param array<string, mixed> $actor
+     */
     private function canAccessMedia(array $file, array $actor): bool
     {
         if (RolePolicy::role($actor) === 'department') {
@@ -2185,17 +2331,24 @@ class WorkspaceController extends BaseController
     {
         $actor = session()->get();
         $model = new FileModel();
-        if (($actor['role'] ?? '') === 'department') $model->setTable('department_files')->where('department', (string)($actor['department'] ?? ''));
+        if (($actor['role'] ?? '') === 'department') {
+            $model->setTable('department_files')->where('department', (string) ($actor['department'] ?? ''));
+        }
         return $model;
     }
 
     private function resolveMediaPathForActor(array $file, array $actor): string
     {
-        if (!$this->canAccessMedia($file, $actor)) throw new RuntimeException('This media is not available to your account.');
+        if (! $this->canAccessMedia($file, $actor)) {
+            throw new RuntimeException('This media is not available to your account.');
+        }
         return service('storage')->resolveDatabaseFile((string)($file['filepath'] ?? ''));
     }
 
-    /** @param array<string, mixed> $file @param array<string, mixed> $actor */
+    /**
+     * @param array<string, mixed> $file
+     * @param array<string, mixed> $actor
+     */
     private function restoreTrashedMedia(array $file, array $actor, string $auditAction = 'RESTORE'): void
     {
         $id = (int) $file['id'];
@@ -2217,7 +2370,9 @@ class WorkspaceController extends BaseController
 
     private function processServerTrashSelection(array $ids, bool $delete, array $actor): array
     {
-        if ($ids === []) return [0, []];
+        if ($ids === []) {
+            return [0, []];
+        }
         $done = 0; $errors = [];
         $editor = $this->serverTrashEditor();
         if (!$delete) {
@@ -2228,13 +2383,14 @@ class WorkspaceController extends BaseController
         }
         foreach ($ids as $id) {
             try {
+                $auditLabel = $editor->trashAuditLabel($id);
                 $delete ? $editor->permanentlyDelete($id) : $editor->restore($id, is_string($this->request->getPost('server_restore_folder')) ? trim($this->request->getPost('server_restore_folder')) : null);
                 $done++;
             } catch (\Throwable $exception) {
                 $errors[] = 'Server item: ' . ($exception->getMessage() ?: 'The action could not be completed.');
                 continue;
             }
-            try { service('audit')->record($actor, $this->request, 'delete', $delete ? 'SERVER_TRASH_DELETE' : 'SERVER_TRASH_RESTORE', 'server_library', null, 'Trash item ' . $id); }
+            try { service('audit')->record($actor, $this->request, 'delete', $delete ? 'SERVER_TRASH_DELETE' : 'SERVER_TRASH_RESTORE', 'server_library', null, ($delete ? 'Permanently deleted from server Trash: ' : 'Restored from server Trash: ') . $auditLabel); }
             catch (\Throwable $exception) { log_message('error', 'Server Trash audit failed: {message}', ['message'=>$exception->getMessage()]); }
         }
         return [$done, $errors];
@@ -2440,7 +2596,9 @@ class WorkspaceController extends BaseController
             $path = (string) ($folder['name'] ?? '');
         }
 
-        if ((new \Config\Storage())->centralized() && str_starts_with($path,'server-library/')) $path = substr($path,15);
+        if ((new \Config\Storage())->centralized() && str_starts_with($path, 'server-library/')) {
+            $path = substr($path, 15);
+        }
         return service('storage')->normalizeRelativePath($path, false);
     }
 
@@ -2459,7 +2617,11 @@ class WorkspaceController extends BaseController
         return implode(' / ', array_filter($parts, static fn (string $part): bool => $part !== ''));
     }
 
-    /** @param list<int> $folderIds @param array<int, array<string, mixed>> $folderById @return list<int> */
+    /**
+     * @param list<int> $folderIds
+     * @param array<int, array<string, mixed>> $folderById
+     * @return list<int>
+     */
     private function folderIdsWithAncestors(array $folderIds, array $folderById): array
     {
         $accessible = [];
@@ -2478,7 +2640,11 @@ class WorkspaceController extends BaseController
         return array_map('intval', array_keys($accessible));
     }
 
-    /** @param list<array<string,mixed>> $folders @param array<int,array<string,mixed>> $folderById @return list<int> */
+    /**
+     * @param list<array<string,mixed>> $folders
+     * @param array<int,array<string,mixed>> $folderById
+     * @return list<int>
+     */
     private function matchingFolderIds(array $folders, array $folderById, string $query): array
     {
         $ids = [];
@@ -2583,7 +2749,10 @@ class WorkspaceController extends BaseController
         return session()->get('isLoggedIn') === true ? null : redirect()->to(site_url('login'));
     }
 
-    /** @param array<string, mixed> $data @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
     private function pageData(string $activePage, string $title, array $data): array
     {
         helper('dashboard');
@@ -2608,7 +2777,10 @@ class WorkspaceController extends BaseController
         ]);
     }
 
-    /** @param array<string, mixed> $actor @return list<string> */
+    /**
+     * @param array<string, mixed> $actor
+     * @return list<string>
+     */
     private function runPostUploadAutomation(int $fileId, array $actor): array
     {
         $file = (new FileModel())->find($fileId);
@@ -2657,22 +2829,34 @@ class WorkspaceController extends BaseController
         if ($postType === 'folder') {
             $folderId = (int)$this->request->getPost('folder_id');
             $folder = (new \App\Models\FolderModel())->where('is_deleted', 0)->find($folderId);
-            if (!$folder) return redirect()->back()->with('error', 'Folder not found.');
+            if (! $folder) {
+                return redirect()->back()->with('error', 'Folder not found.');
+            }
             $folderIds = [$folderId];
             $folders = (new \App\Models\FolderModel())->where('is_deleted', 0)->findAll();
             do {
                 $before = count($folderIds);
-                foreach ($folders as $child) if (in_array((int)$child['parent_id'], $folderIds, true) && !in_array((int)$child['id'], $folderIds, true)) $folderIds[] = (int)$child['id'];
+                foreach ($folders as $child) {
+                    if (in_array((int) $child['parent_id'], $folderIds, true) && ! in_array((int) $child['id'], $folderIds, true)) {
+                        $folderIds[] = (int) $child['id'];
+                    }
+                }
             } while (count($folderIds) > $before);
             $fileIds = array_column($fileModel->whereIn('folder_id', $folderIds)->where('is_deleted', 0)->whereIn('media_kind', ['image', 'video'])->findAll(), 'id');
         } elseif ($postType === 'files') {
             $fileIds = $this->request->getPost('file_ids') ?? [];
-            if (!is_array($fileIds)) return redirect()->back()->with('error', 'Choose files to post.');
+            if (! is_array($fileIds)) {
+                return redirect()->back()->with('error', 'Choose files to post.');
+            }
         } else {
             return redirect()->back()->with('error', 'Invalid post type.');
         }
-        if (!$fileIds) return redirect()->back()->with('error', 'Select at least one photo or video.');
-        if (mb_strlen($displayTitle) > 150 || mb_strlen($description) > 5000) return redirect()->back()->with('error', 'Title may contain at most 150 characters and description 5,000.');
+        if (! $fileIds) {
+            return redirect()->back()->with('error', 'Select at least one photo or video.');
+        }
+        if (mb_strlen($displayTitle) > 150 || mb_strlen($description) > 5000) {
+            return redirect()->back()->with('error', 'Title may contain at most 150 characters and description 5,000.');
+        }
         $db = db_connect();
         $db->transStart();
         try {
@@ -2689,7 +2873,9 @@ class WorkspaceController extends BaseController
             log_message('error', 'App post failed: {message}', ['message' => $error->getMessage()]);
             return redirect()->back()->with('error', 'The media could not be posted. Please try again.');
         }
-        if (!$db->transStatus()) return redirect()->back()->with('error', 'Failed to post media.');
+        if (! $db->transStatus()) {
+            return redirect()->back()->with('error', 'Failed to post media.');
+        }
         return redirect()->to(site_url('workspace/published-files'))->with('message', 'Posted to GreyhoundHub. App admins can now edit and publish it for regular users.');
     }
 

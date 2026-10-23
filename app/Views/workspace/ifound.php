@@ -449,7 +449,7 @@ $ifoundPageUrl = static function (int $page) use ($term, $aiResult): string {
             for (var offset = 0; offset < selection.length; offset += batchSize) {
                 var batch = selection.slice(offset, offset + batchSize);
                 await refreshToken();
-                payload = await send(form.action, {file_paths: batch.map(function (file) { return file.path; }), previous_job_id: previousJobId});
+                payload = await send(form.action, {file_paths: batch.map(function (file) { return file.path; }), previous_job_id: previousJobId, selection_total: selection.length});
                 var renderBatch = function () {
                     render(Object.assign({}, payload, {total:selection.length, processed:offset + payload.processed,
                         imported:totals.imported + payload.imported, skipped:totals.skipped + payload.skipped,

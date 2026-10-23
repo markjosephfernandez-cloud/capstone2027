@@ -6,6 +6,7 @@ use App\Models\ApiTokenModel;
 use App\Models\UserModel;
 use CodeIgniter\I18n\Time;
 
+/** Issues hashed bearer tokens and resolves them to active accounts. */
 class TokenService
 {
     public function __construct(
@@ -77,7 +78,12 @@ class TokenService
         }
     }
 
-    /** @param array<string, mixed> $user */
+    /**
+     * Whitelists identity fields so credential data never enters API responses.
+     *
+     * @param array<string, mixed> $user
+     * @return array{employee_id: int, name: mixed, department: mixed, position: mixed, email_address: mixed, role: mixed}
+     */
     public function publicUser(array $user): array
     {
         return [

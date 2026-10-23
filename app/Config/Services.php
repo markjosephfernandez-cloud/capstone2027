@@ -19,6 +19,24 @@ use CodeIgniter\Config\BaseService;
  */
 class Services extends BaseService
 {
+    public static function misEmployees(bool $getShared = true): \App\Services\MisEmployeeService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('misEmployees');
+        }
+
+        return new \App\Services\MisEmployeeService();
+    }
+
+    public static function misTokens(bool $getShared = true): \App\Services\MisTokenService
+    {
+        if ($getShared) {
+            return static::getSharedInstance('misTokens');
+        }
+
+        return new \App\Services\MisTokenService();
+    }
+
     public static function incomingrequest(?App $config = null, bool $getShared = true)
     {
         if ($getShared) {

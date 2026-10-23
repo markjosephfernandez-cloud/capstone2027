@@ -3,10 +3,11 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
+use CodeIgniter\HTTP\RedirectResponse;
 
 class NotificationController extends BaseController
 {
-    public function index()
+    public function index(): string|RedirectResponse
     {
         if (session()->get('isLoggedIn') !== true) {
             return redirect()->to(site_url('login'));
@@ -33,7 +34,7 @@ class NotificationController extends BaseController
         ]);
     }
 
-    public function read(int $id)
+    public function read(int $id): RedirectResponse
     {
         if (session()->get('isLoggedIn') !== true) {
             return redirect()->to(site_url('login'));
@@ -48,7 +49,7 @@ class NotificationController extends BaseController
         return redirect()->to($link !== '' ? $link : site_url('dashboard'));
     }
 
-    public function readAll()
+    public function readAll(): RedirectResponse
     {
         if (session()->get('isLoggedIn') !== true) {
             return redirect()->to(site_url('login'));

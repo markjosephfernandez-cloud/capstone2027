@@ -8,14 +8,18 @@ use RuntimeException;
 /** CLI-only scan with durable checkpoints and deletion only after a complete pass. */
 class ServerLibraryIndexer
 {
-    public function __construct(private BaseConnection $db, private Storage $config) {}
+    public function __construct(private BaseConnection $db, private Storage $config)
+    {
+    }
 
     public function run(int $seconds = 0, bool $restart = false, ?callable $continue = null): array
     {
         $source = hash('sha256', rtrim($this->config->scanSourceRoot(), '/\\'));
         $lock = fopen(WRITEPATH . 'cache/server-index-' . $source . '.lock', 'c');
         if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-            if ($lock) fclose($lock);
+            if ($lock) {
+                fclose($lock);
+            }
             throw new RuntimeException('Another indexer is already running for this share.');
         }
         $library = new ServerLibraryService($this->config);
@@ -33,7 +37,9 @@ class ServerLibraryIndexer
                 $this->db->table('server_library_scan_queue')->insert(['source_key'=>$source,'path'=>'','path_hash'=>hash('sha256',''),'entry_offset'=>0]);
                 $this->db->table('server_library_sources')->upsert(['source_key'=>$source,'run_id'=>$run,'status'=>'running','updated_at'=>gmdate('Y-m-d H:i:s'),'completed_at'=>$state['completed_at'] ?? null,'last_error'=>null]);
                 $this->db->transComplete();
-                if (!$this->db->transStatus()) throw new RuntimeException('Could not start the catalog scan.');
+                if (! $this->db->transStatus()) {
+                    throw new RuntimeException('Could not start the catalog scan.');
+                }
                 $state = ['run_id'=>$run];
             }
             // Drop obsolete catalog/queue records for the reserved server Trash tree.
@@ -55,7 +61,9 @@ class ServerLibraryIndexer
             $deferred = [];
             while ($canRead()) {
                 $queue = $this->db->table('server_library_scan_queue')->where('source_key',$source);
-                if ($deferred) $queue->whereNotIn('id', array_keys($deferred));
+                if ($deferred) {
+                    $queue->whereNotIn('id', array_keys($deferred));
+                }
                 $cursor = $queue->orderBy('priority', 'DESC')->orderBy('id')->get(1)->getRowArray();
                 if (!$cursor) {
                     $library->root();
@@ -68,7 +76,9 @@ class ServerLibraryIndexer
                     $this->db->table('server_library_index')->where('source_key',$source)->where('run_id !=',$run)->delete();
                     $this->db->table('server_library_sources')->where('source_key',$source)->update(['status'=>'complete','completed_at'=>gmdate('Y-m-d H:i:s'),'updated_at'=>gmdate('Y-m-d H:i:s'),'last_error'=>null]);
                     $this->db->transComplete();
-                    if (!$this->db->transStatus()) throw new RuntimeException('Could not complete the catalog scan.');
+                    if (! $this->db->transStatus()) {
+                        throw new RuntimeException('Could not complete the catalog scan.');
+                    }
                     return ['status'=>'complete','processed'=>$processed];
                 }
                 // Retain an unreadable directory for retry, but continue other folders.
@@ -79,29 +89,53 @@ class ServerLibraryIndexer
                     // Reuse the stream between checkpoints. Replaying the saved offset
                     // is only necessary on resume or when queue priority changes folders.
                     if ($handleCursor !== $cursor['id'] || !is_resource($handle)) {
-                        if (is_resource($handle)) closedir($handle);
+                        if (is_resource($handle)) {
+                            closedir($handle);
+                        }
                         $handle = $this->openDirectory($directory);
-                        if (!$handle) throw new RuntimeException('Cannot read directory: ' . $cursor['path']);
+                        if (! $handle) {
+                            throw new RuntimeException('Cannot read directory: ' . $cursor['path']);
+                        }
                         $handleCursor = $cursor['id'];
                         for ($skip = 0; $skip < $offset; $skip++) {
-                            if ($this->readDirectory($handle) === false) { $finished = true; break; }
+                            if ($this->readDirectory($handle) === false) {
+                                $finished = true;
+                                break;
+                            }
                         }
                     }
                     while (!$finished && count($rows) < 100 && $canRead()) {
                         $name = $this->readDirectory($handle);
-                        if ($name === false) { $finished = true; break; }
+                        if ($name === false) {
+                            $finished = true;
+                            break;
+                        }
                         $offset++;
-                        if (str_starts_with($name,'.') || in_array(strtolower($name),['__macosx','thumbs.db','desktop.ini'],true)) continue;
+                        if (str_starts_with($name, '.') || in_array(strtolower($name), ['__macosx', 'thumbs.db', 'desktop.ini'], true)) {
+                            continue;
+                        }
                         $relative = ($cursor['path'] === '' ? '' : $cursor['path'] . '/') . $name;
-                        try { $library->relative($relative); } catch (RuntimeException) { continue; }
+                        try {
+                            $library->relative($relative);
+                        } catch (RuntimeException) {
+                            continue;
+                        }
                         $absolute = $directory . DIRECTORY_SEPARATOR . $name;
-                        if (is_link($absolute)) continue;
+                        if (is_link($absolute)) {
+                            continue;
+                        }
                         $stat = @stat($absolute);
-                        if (!$stat || !is_readable($absolute)) throw new RuntimeException('Cannot read item: ' . $relative);
+                        if (! $stat || ! is_readable($absolute)) {
+                            throw new RuntimeException('Cannot read item: ' . $relative);
+                        }
                         $isDir = is_dir($absolute);
-                        if (!$isDir && !is_file($absolute)) continue;
+                        if (! $isDir && ! is_file($absolute)) {
+                            continue;
+                        }
                         $hash = hash('sha256',$relative);
-                        if ($isDir) $children[] = ['source_key'=>$source,'path'=>$relative,'path_hash'=>$hash,'entry_offset'=>0];
+                        if ($isDir) {
+                            $children[] = ['source_key' => $source, 'path' => $relative, 'path_hash' => $hash, 'entry_offset' => 0];
+                        }
                         $passport = $metadata['media'][$relative]['passport'] ?? [];
                         $rows[] = ['source_key'=>$source,'path_hash'=>$hash,'parent_hash'=>hash('sha256',$cursor['path']),
                             'path'=>$relative,'name'=>$name,'is_dir'=>$isDir ? 1 : 0,'size'=>$isDir ? null : $stat['size'],
@@ -112,9 +146,15 @@ class ServerLibraryIndexer
                             'uploaded_at'=>$metadata['media'][$relative]['uploaded_at'] ?? null,
                             'run_id'=>$run,'indexed_at'=>gmdate('Y-m-d H:i:s')];
                     }
-                    if ($finished) { closedir($handle); $handle = null; $handleCursor = null; }
+                    if ($finished) {
+                        closedir($handle);
+                        $handle = null;
+                        $handleCursor = null;
+                    }
                 } catch (RuntimeException $error) {
-                    if (is_resource($handle)) closedir($handle);
+                    if (is_resource($handle)) {
+                        closedir($handle);
+                    }
                     $handle = null; $handleCursor = null;
                     $library->root(); // A disconnected source still stops the whole pass.
                     $this->reconnectAfterRead();
@@ -125,32 +165,46 @@ class ServerLibraryIndexer
                 $library->root();
                 $this->reconnectAfterRead();
                 $this->db->transStart();
-                if ($rows) $this->db->table('server_library_index')->onConstraint(['source_key','path_hash'])->upsertBatch($rows);
+                if ($rows) {
+                    $this->db->table('server_library_index')->onConstraint(['source_key', 'path_hash'])->upsertBatch($rows);
+                }
                 if ($rows && $this->config->centralized()) {
                     $identities = array_map(static fn ($row) => ['source_key'=>$source,'path_hash'=>$row['path_hash'],'path'=>$row['path'],'is_dir'=>$row['is_dir'],'is_deleted'=>0,'updated_at'=>gmdate('Y-m-d H:i:s')], $rows);
                     $this->db->table('server_media')->ignore(true)->insertBatch($identities);
                 }
-                if ($children) $this->db->table('server_library_scan_queue')->ignore(true)->insertBatch($children);
+                if ($children) {
+                    $this->db->table('server_library_scan_queue')->ignore(true)->insertBatch($children);
+                }
                 if ($finished) $this->db->table('server_library_scan_queue')->where('id',$cursor['id'])->delete();
                 else $this->db->table('server_library_scan_queue')->where('id',$cursor['id'])->update(['entry_offset'=>$offset]);
                 $this->db->table('server_library_sources')->where('source_key',$source)->update(['updated_at'=>gmdate('Y-m-d H:i:s')]);
                 $this->db->transComplete();
-                if (!$this->db->transStatus()) throw new RuntimeException('Could not save catalog progress.');
+                if (! $this->db->transStatus()) {
+                    throw new RuntimeException('Could not save catalog progress.');
+                }
                 $processed += count($rows);
             }
             $this->db->table('server_library_sources')->where('source_key',$source)->update(['status'=>'paused']);
             return ['status'=>'paused','processed'=>$processed];
         } catch (\Throwable $error) {
             try {
-                while ($this->db->transDepth > 0) { if (!$this->db->transRollback()) break; }
+                while ($this->db->transDepth > 0) {
+                    if (! $this->db->transRollback()) {
+                        break;
+                    }
+                }
                 $this->reconnectAfterRead();
-                if ($state !== null) $this->db->table('server_library_sources')->where('source_key',$source)->update(['status'=>'failed','last_error'=>mb_substr($error->getMessage(),0,2000)]);
+                if ($state !== null) {
+                    $this->db->table('server_library_sources')->where('source_key', $source)->update(['status' => 'failed', 'last_error' => mb_substr($error->getMessage(), 0, 2000)]);
+                }
             } catch (\Throwable $reportError) {
                 log_message('error', 'Catalog could not record failure: {message}', ['message'=>$reportError->getMessage()]);
             }
             throw $error;
         } finally {
-            if (is_resource($handle)) closedir($handle);
+            if (is_resource($handle)) {
+                closedir($handle);
+            }
             flock($lock, LOCK_UN); fclose($lock);
         }
     }

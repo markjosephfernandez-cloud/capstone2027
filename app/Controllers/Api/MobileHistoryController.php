@@ -10,7 +10,9 @@ class MobileHistoryController extends ApiController
     public function watch()
     {
         $file = $this->publishedFile();
-        if ($file === null) return $this->error('not_found', 'Published media not found.', 404);
+        if ($file === null) {
+            return $this->error('not_found', 'Published media not found.', 404);
+        }
 
         $progress = $this->input()['progress_seconds'] ?? null;
         $progress = is_numeric($progress) ? max(0, (int) $progress) : null;
@@ -18,8 +20,7 @@ class MobileHistoryController extends ApiController
         $userId = (int) $this->actor()['employee_id'];
         $fileId = (int) $file['id'];
         $db->transStart();
-        // Serialize repeat plays of this file, including simultaneous requests.
-        $db->query('SELECT id FROM files WHERE id = ? FOR UPDATE', [$fileId]);
+        (new FileModel($db))->lockForWatchHistory($fileId);
         $existing = $db->table('mobile_watch_history')->where('user_employee_id', $userId)
             ->where('file_id', $fileId)->orderBy('watched_at', 'DESC')->orderBy('id', 'DESC')->get(1)->getRowArray();
         $data = ['file_id' => $fileId, 'user_employee_id' => $userId,
@@ -34,14 +35,18 @@ class MobileHistoryController extends ApiController
             $id = (int) $db->insertID();
         }
         $db->transComplete();
-        if (! $db->transStatus()) return $this->error('history_failed', 'Could not save watch history.', 500);
+        if (! $db->transStatus()) {
+            return $this->error('history_failed', 'Could not save watch history.', 500);
+        }
         return $this->success(['id' => $id], 201);
     }
 
     public function download()
     {
         $file = $this->publishedFile();
-        if ($file === null || ! (bool) $file['downloadable']) return $this->error('not_found', 'Downloadable media not found.', 404);
+        if ($file === null || ! (bool) $file['downloadable']) {
+            return $this->error('not_found', 'Downloadable media not found.', 404);
+        }
 
         $size = $this->input()['file_size_bytes'] ?? null;
         $size = is_numeric($size) ? max(0, (int) $size) : null;
@@ -82,7 +87,9 @@ class MobileHistoryController extends ApiController
     private function publishedFile(): ?array
     {
         $fileId = (int) ($this->input()['file_id'] ?? 0);
-        if ($fileId < 1) return null;
+        if ($fileId < 1) {
+            return null;
+        }
 
         return (new FileModel())->where([
             'id' => $fileId,

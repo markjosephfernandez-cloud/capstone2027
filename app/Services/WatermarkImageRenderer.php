@@ -5,7 +5,10 @@ namespace App\Services;
 /** Performs the GD-only image composition used by WatermarkService. */
 final class WatermarkImageRenderer
 {
-    /** @param array<string, mixed> $settings @return array{written: bool, reason?: string} */
+    /**
+     * @param array<string, mixed> $settings
+     * @return array{written: bool, reason?: string}
+     */
     public function render(string $source, string $logoPath, string $destination, string $extension, array $settings): array
     {
         if (! extension_loaded('gd')) {

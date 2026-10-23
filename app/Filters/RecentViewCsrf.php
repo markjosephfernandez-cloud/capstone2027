@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Filters;
 
 use CodeIgniter\Filters\CSRF;
@@ -12,7 +13,10 @@ final class RecentViewCsrf extends CSRF
         $config = config('Security');
         $regenerate = $config->regenerate;
         $config->regenerate = false;
-        try { return parent::before($request,$arguments); }
-        finally { $config->regenerate = $regenerate; }
+        try {
+            return parent::before($request, $arguments);
+        } finally {
+            $config->regenerate = $regenerate;
+        }
     }
 }

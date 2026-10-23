@@ -8,7 +8,9 @@ class SelectedImageScan
 {
     public const TASKS = ['events', 'objects', 'expressions'];
 
-    public function __construct(private readonly ServerLibraryService $library = new ServerLibraryService()) {}
+    public function __construct(private readonly ServerLibraryService $library = new ServerLibraryService())
+    {
+    }
 
     public static function validateModes(mixed $modes): array
     {
@@ -23,7 +25,9 @@ class SelectedImageScan
         $file = $this->fileFor($path, $employee);
         $id = (int) $file['id'];
         $pending = array_values(array_diff(self::TASKS, $this->completedTasks($file)));
-        if (!$pending) return ['status'=>'skipped', 'file_id'=>$id, 'message'=>basename($path).' already scanned by all three analyses.'];
+        if (! $pending) {
+            return ['status' => 'skipped', 'file_id' => $id, 'message' => basename($path) . ' already scanned by all three analyses.'];
+        }
 
         $errors = [];
         if (in_array('events', $pending, true)) {
@@ -36,7 +40,9 @@ class SelectedImageScan
                 $result = $this->analyzeVisual($file, $tasks);
                 foreach ($tasks as $task) {
                     $finished = $task === 'expressions' ? ['complete', 'no_face'] : ['complete'];
-                    if (!in_array($result[$task]['status'] ?? '', $finished, true)) $errors[] = ucfirst($task).' analysis is unavailable; retry later.';
+                    if (! in_array($result[$task]['status'] ?? '', $finished, true)) {
+                        $errors[] = ucfirst($task) . ' analysis is unavailable; retry later.';
+                    }
                 }
             } catch (\RuntimeException $error) { $errors[] = $error->getMessage(); }
         }
@@ -60,8 +66,12 @@ class SelectedImageScan
         if (!empty($event['reviewed_at']) || ($event !== null && !empty($event['processed_at'])
             && !empty($event['detector_version']) && $event['detector_version'] !== 'greyhound-keyword-baseline')
             || ($event === null && !empty($file['last_scanned']))) $completed[] = 'events';
-        if (($visual['objects']['status'] ?? '') === 'complete') $completed[] = 'objects';
-        if (in_array($visual['expressions']['status'] ?? '', ['complete', 'no_face'], true)) $completed[] = 'expressions';
+        if (($visual['objects']['status'] ?? '') === 'complete') {
+            $completed[] = 'objects';
+        }
+        if (in_array($visual['expressions']['status'] ?? '', ['complete', 'no_face'], true)) {
+            $completed[] = 'expressions';
+        }
         return $completed;
     }
 

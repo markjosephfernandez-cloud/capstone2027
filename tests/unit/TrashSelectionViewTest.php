@@ -12,7 +12,7 @@ final class TrashSelectionViewTest extends CIUnitTestCase
 
         $this->assertStringContainsString('id="trashSelectionActions" hidden', $html);
         $this->assertStringContainsString('Restore selected', $html);
-        $this->assertStringContainsString('Delete selected', $html);
+        $this->assertStringContainsString('Delete permanently', $html);
         $this->assertStringContainsString("selectionActions.hidden = count === 0", $html);
         $this->assertStringContainsString("allVisibleSelected ? 'Unselect all' : 'Select all visible'", $html);
         $this->assertStringNotContainsString('id="clearTrashSelection"', $html);
@@ -28,7 +28,7 @@ final class TrashSelectionViewTest extends CIUnitTestCase
         $html = view('workspace/trash', $this->viewData('staff'));
 
         $this->assertStringContainsString('Restore selected', $html);
-        $this->assertStringNotContainsString('Delete selected', $html);
+        $this->assertStringNotContainsString('Delete permanently', $html);
         $this->assertStringNotContainsString('workspace/trash/bulk-delete', $html);
     }
 
@@ -60,6 +60,34 @@ final class TrashSelectionViewTest extends CIUnitTestCase
         $this->assertStringContainsString('2 subfolders', $html);
         $this->assertStringContainsString("'folder_ids[]'", $html);
         $this->assertStringContainsString('workspace/trash/folders/12', $html);
+    }
+
+    public function testLongNamesThumbnailsAndUnknownDatesRenderSafely(): void
+    {
+        helper('dashboard');
+        $data = $this->viewData('admin');
+        $name = str_repeat('Long filename ', 18) . '<photo>.png';
+        $data['files'][0]['filename'] = $name;
+        $data['files'][0]['deleted_at'] = null;
+        $data['files'][0]['last_action_at'] = null;
+        $data['files'][0]['trash_expires_at'] = '-';
+        $data['serverItems'] = [[
+            'id'=>str_repeat('a', 32), 'name'=>$name, 'directory'=>false,
+            'filetype'=>'png', 'size'=>100, 'path'=>'Old folder/' . $name,
+            'deleted_at'=>'Unknown', 'original_unknown'=>true, 'trash_days_remaining'=>30,
+            'trash_expires_at'=>'2026-11-17 10:00:00',
+        ]];
+        $html = view('workspace/trash', $data);
+        $this->assertStringContainsString('title="' . esc($name) . '"', $html);
+        $this->assertStringNotContainsString('<photo>', $html);
+        $this->assertStringContainsString('/preview?thumbnail=1', $html);
+        $this->assertStringContainsString('data-restore-destination="1"', $html);
+        $this->assertStringContainsString('id="trashRestoreDestination" hidden', $html);
+        $this->assertStringContainsString('Retention date unknown', $html);
+        $this->assertStringContainsString('Deletion date not recorded', $html);
+        $this->assertStringContainsString('Local Library', $html);
+        $this->assertStringContainsString('Server Library', $html);
+        $this->assertStringContainsString('loading="eager"', $html);
     }
 
     /** @return array<string, mixed> */

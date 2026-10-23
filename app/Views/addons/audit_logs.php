@@ -128,8 +128,16 @@ $actionLabel = static function (?string $action): string {
                     <?php foreach ($logs as $log): ?>
                         <?php
                         $description = (string) ($log['description'] ?: '-');
+                        $description = \App\Libraries\TrashAuditDescription::format((string) ($log['action'] ?? ''), $description);
+                        $isLibraryUpload = ($log['action'] ?? '') === 'SERVER_LIBRARY_UPLOAD';
+                        if ($isLibraryUpload) {
+                            $description = \App\Libraries\UploadAuditDescription::format($description);
+                        }
                         $isLibraryPost = str_starts_with($description, 'Server Library post:');
                         $preview = $isLibraryPost ? 'Posted media to the server library.' : (mb_strlen($description) > 160 ? mb_substr($description, 0, 150) . '…' : $description);
+                        if (in_array($log['action'], ['SERVER_SCAN_IN_PROGRESS', 'SERVER_SCAN_COMPLETED'], true)) {
+                            $preview = explode("\n", $description, 2)[0];
+                        }
                         $actor = (string) ($log['user_name'] ?: $log['user_id'] ?: 'System');
                         $moduleName = (string) ($log['module'] ?: 'system');
                         $icon = match ($moduleName) { 'auth' => 'bi-shield-check', 'file' => 'bi-file-earmark', 'distribution' => 'bi-send', default => 'bi-activity' };
@@ -144,7 +152,9 @@ $actionLabel = static function (?string $action): string {
                                     <span class="audit-badge audit-action"><?= esc($actionLabel($log['action'] ?? '')) ?></span>
                                 </div>
                                 <div class="audit-meta"><?= esc(ucfirst($moduleName)) ?><?php if (! empty($log['department'])): ?> &middot; <?= esc((string) $log['department']) ?><?php endif; ?></div>
-                                <p class="audit-description"><?= esc($preview) ?></p>
+                                <?php if (! $isLibraryUpload): ?>
+                                    <p class="audit-description"><?= esc($preview) ?></p>
+                                <?php endif; ?>
                                 <details class="audit-details" <?= isset($selectedLogId) && $selectedLogId === (int) $log['id'] ? 'open' : '' ?>>
                                     <summary>View details<span class="visually-hidden"> for <?= esc($actor) ?>, <?= esc($displayTime) ?> PHT</span></summary>
                                     <div class="audit-full" tabindex="0" role="region" aria-label="Full audit details">

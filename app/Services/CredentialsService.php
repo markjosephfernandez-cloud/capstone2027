@@ -3,19 +3,36 @@
 namespace App\Services;
 
 use App\Models\UserModel;
+use Config\Mis;
 
-/** Verifies legacy credentials and upgrades plaintext records on first use. */
+/** Uses the configured identity provider, retaining local account permissions. */
 class CredentialsService
 {
-    public function __construct(private readonly UserModel $users = new UserModel())
-    {
+    public function __construct(
+        private readonly UserModel $users = new UserModel(),
+        private readonly Mis $mis = new Mis(),
+        private readonly ?MisLoginService $misLogin = null,
+    ) {
     }
 
     /** @return array<string, mixed>|null */
-    public function attempt(int $employeeId, string $password): ?array
+    public function attempt(int $employeeId, #[\SensitiveParameter] string $password): ?array
     {
+        if ($employeeId < 1 || $password === '') {
+            return null;
+        }
         $user = $this->users->find($employeeId);
-        if ($user === null || (isset($user['is_active']) && (int) $user['is_active'] !== 1) || ! $this->matches($password, $user)) {
+        if ($user === null || (isset($user['is_active']) && (int) $user['is_active'] !== 1)) {
+            return null;
+        }
+
+        if ($this->mis->loginEnabled) {
+            // Never fall back to a local password when MIS rejects or is unavailable.
+            return ($this->misLogin ?? new MisLoginService($this->mis))->verify($employeeId, $password)
+                ? $user : null;
+        }
+
+        if (! $this->matches($password, $user)) {
             return null;
         }
 

@@ -27,6 +27,7 @@ $days = (int) $rootFolder['trash_days_remaining'];
     .trash-folder-workspace .deleted-folder-card { min-width: 0; }
     .trash-folder-workspace .deleted-folder-card:hover { transform: none; }
 </style>
+<?= view('workspace/trash_styles') ?>
 <main id="main" class="main trash-folder-workspace">
     <div class="pagetitle d-flex align-items-start justify-content-between flex-wrap gap-2"><div><h1>Trash</h1><nav><ol class="breadcrumb"><li class="breadcrumb-item"><a href="<?= esc(site_url('dashboard')) ?>">Dashboard</a></li><li class="breadcrumb-item"><a href="<?= esc(site_url('workspace/trash')) ?>">Trash</a></li><li class="breadcrumb-item active"><?= esc($folder['name']) ?></li></ol></nav></div><a class="btn btn-outline-secondary btn-sm" href="<?= esc(site_url('workspace/trash')) ?>"><i class="bi bi-arrow-left me-1"></i>Back to Trash</a></div>
     <section class="section">
@@ -47,19 +48,18 @@ $days = (int) $rootFolder['trash_days_remaining'];
             <div class="item-grid">
                 <?php foreach ($children as $child): ?><a class="item-card deleted-folder-card" href="<?= esc(site_url('workspace/trash/folders/' . (int) $child['id'])) ?>"><div class="item-preview folder-preview"><i class="bi bi-folder-fill"></i></div><div class="item-body"><div class="item-name"><?= esc($child['name']) ?></div><div class="item-meta">Deleted subfolder</div><span class="item-type">Folder</span></div></a><?php endforeach; ?>
                 <?php foreach ($files as $file): ?><?php $filetype = strtolower((string) $file['filetype']); $kind = in_array($filetype, $imageTypes, true) ? 'image' : (in_array($filetype, $videoTypes, true) ? 'video' : 'file'); $mediaTitle = \App\Libraries\MediaTitle::forFile($file); $previewUrl = site_url('workspace/trash/' . (int) $file['id'] . '/preview'); ?>
-                    <article class="item-card"><?php if ($kind !== 'file'): ?><button class="item-preview" type="button" data-bs-toggle="modal" data-bs-target="#trashFolderPreviewModal" data-preview-kind="<?= esc($kind) ?>" data-preview-src="<?= esc($previewUrl) ?>" data-preview-name="<?= esc($mediaTitle, 'attr') ?>" aria-label="Preview <?= esc($mediaTitle) ?>"><?php if ($kind === 'image'): ?><img src="<?= esc($previewUrl) ?>" alt="Preview of <?= esc($mediaTitle) ?>" loading="lazy"><?php else: ?><i class="bi bi-play-circle-fill"></i><?php endif; ?></button><?php else: ?><div class="item-preview"><i class="bi bi-file-earmark"></i></div><?php endif; ?><div class="item-body"><div class="item-name" title="<?= esc($mediaTitle) ?>"><?= esc($mediaTitle) ?></div><div class="item-meta"><?= esc(format_bytes((int) $file['size'])) ?></div><span class="item-type"><?= esc($filetype ?: 'file') ?></span></div></article>
+                    <article class="item-card"><?= view('workspace/trash_thumbnail', ['kind'=>$kind, 'previewUrl'=>$previewUrl, 'mediaTitle'=>$mediaTitle, 'previewClass'=>'item-preview', 'modalId'=>'trashFolderPreviewModal']) ?><div class="item-body"><div class="item-name" title="<?= esc($mediaTitle) ?>"><?= esc($mediaTitle) ?></div><div class="item-meta"><?= esc(format_bytes((int) $file['size'])) ?></div><span class="item-type"><?= esc($filetype ?: 'file') ?></span></div></article>
                 <?php endforeach; ?>
                 <?php if ($children === [] && $files === []): ?><div class="empty-folder"><i class="bi bi-folder2"></i><h3 class="h6 mt-3">This folder is empty</h3><p class="small mb-0">There are no saved files or subfolders at this level.</p></div><?php endif; ?>
             </div>
         </div>
     </section>
 </main>
-<div class="modal fade" id="trashFolderPreviewModal" tabindex="-1" aria-labelledby="trashFolderPreviewTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title text-truncate" id="trashFolderPreviewTitle">Trash preview</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body trash-folder-preview-body"><img class="d-none" id="trashFolderPreviewImage" src="" alt=""><video class="d-none" id="trashFolderPreviewVideo" src="" controls preload="metadata"></video></div></div></div></div>
+<div class="modal fade" id="trashFolderPreviewModal" tabindex="-1" aria-labelledby="trashFolderPreviewTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title text-truncate" id="trashFolderPreviewTitle">Trash preview</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body trash-folder-preview-body"><img class="d-none" id="trashFolderPreviewImage" alt=""><video class="d-none" id="trashFolderPreviewVideo" controls preload="metadata"></video></div></div></div></div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var modal = document.getElementById('trashFolderPreviewModal'); var image = document.getElementById('trashFolderPreviewImage'); var video = document.getElementById('trashFolderPreviewVideo'); if (!modal) return;
-    modal.addEventListener('show.bs.modal', function (event) { var trigger = event.relatedTarget; var kind = trigger.dataset.previewKind; document.getElementById('trashFolderPreviewTitle').textContent = trigger.dataset.previewName || 'Trash preview'; image.classList.toggle('d-none', kind !== 'image'); video.classList.toggle('d-none', kind !== 'video'); if (kind === 'image') { image.src = trigger.dataset.previewSrc; image.alt = 'Preview of ' + (trigger.dataset.previewName || 'media'); } else { video.src = trigger.dataset.previewSrc; video.load(); } });
-    modal.addEventListener('hidden.bs.modal', function () { image.src = ''; video.pause(); video.removeAttribute('src'); video.load(); });
+
 });
 </script>
+<?= view('workspace/trash_preview_script') ?>
 <?= view('layouts/app_footer') ?>

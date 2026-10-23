@@ -47,7 +47,9 @@ class MobileFeedController extends ApiController
         $builder = (new FileModel())->where('is_deleted', 0)->where('release_status', 'published')->where('app_published_at IS NOT NULL', null, false);
         if ($this->request->getGet('collection') === 'liked') {
             $ids = array_column(db_connect()->table('mobile_media_likes')->select('file_id')->where(['user_employee_id' => $id, 'reaction' => 'like'])->get()->getResultArray(), 'file_id');
-            if ($ids === []) return $this->success([]);
+            if ($ids === []) {
+                return $this->success([]);
+            }
             $builder->whereIn('id', $ids);
         } else {
             $builder->where('employee_id', $id);
@@ -90,7 +92,9 @@ class MobileFeedController extends ApiController
     public function search()
     {
         $query = trim((string) $this->request->getGet('q'));
-        if ($query === '') return $this->success([], 200, ['suggestions' => []]);
+        if ($query === '') {
+            return $this->success([], 200, ['suggestions' => []]);
+        }
         $folderIds = array_map('intval', array_column((new FolderModel())->where('is_deleted', 0)->select('id')->like('name', $query)->findAll(), 'id'));
         $matchingPosts = db_connect()->table('mobile_posts')->select('id')
             ->groupStart()->like('title', $query)->orLike('description', $query)->orLike('tags', $query)->groupEnd();
@@ -106,7 +110,9 @@ class MobileFeedController extends ApiController
         $seen = [];
         $files = array_values(array_filter($files, static function ($file) use (&$seen) {
             $key = empty($file['app_post_id']) ? 'file:' . $file['id'] : 'post:' . $file['app_post_id'];
-            if (isset($seen[$key])) return false;
+            if (isset($seen[$key])) {
+                return false;
+            }
             $seen[$key] = true;
             return true;
         }));
@@ -114,7 +120,9 @@ class MobileFeedController extends ApiController
         $items = array_map(fn ($file) => $this->mediaPayload($file), $files);
         foreach ($files as $index => $file) {
             foreach ([$items[$index]['display_title'], $file['display_title'] ?? null, $file['publication_channel'] ?? null, $file['classification'] ?? null, $items[$index]['tags'] ?? null, $file['detected_objects'] ?? null] as $value) {
-                if ($value && stripos((string) $value, $query) !== false) $suggestions[(string) $value] = true;
+                if ($value && stripos((string) $value, $query) !== false) {
+                    $suggestions[(string) $value] = true;
+                }
             }
         }
         return $this->success($items, 200, ['suggestions' => array_slice(array_keys($suggestions), 0, 10)]);
@@ -203,7 +211,9 @@ class MobileFeedController extends ApiController
 
         try {
             $preview = (new VideoPreviewService())->forFile($path);
-            if ($preview !== $path) $mimeType = 'video/mp4';
+            if ($preview !== $path) {
+                $mimeType = 'video/mp4';
+            }
             $path = $preview;
         } catch (RuntimeException $exception) {
             log_message('warning', 'Published video preview unavailable: {message}', ['message' => $exception->getMessage()]);
@@ -215,7 +225,9 @@ class MobileFeedController extends ApiController
     public function download(int $id)
     {
         $file = (new FileModel())->where(['is_deleted' => 0, 'release_status' => 'published', 'downloadable' => 1])->where('app_published_at IS NOT NULL', null, false)->find($id);
-        if ($file === null) return $this->error('not_found', 'This media is not available for download.', 404);
+        if ($file === null) {
+            return $this->error('not_found', 'This media is not available for download.', 404);
+        }
         try { $path = service('storage')->resolveDatabaseFile((string) $file['filepath']); }
         catch (RuntimeException) { return $this->error('file_unavailable', 'The media file is unavailable.', 404); }
         return $this->response->download($path, null)->setFileName((string) $file['filename']);

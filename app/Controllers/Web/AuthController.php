@@ -3,11 +3,14 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
+use App\Exceptions\MisAuthenticationUnavailable;
 use App\Models\UserModel;
+use CodeIgniter\HTTP\RedirectResponse;
+use CodeIgniter\HTTP\ResponseInterface;
 
 class AuthController extends BaseController
 {
-    public function loginForm()
+    public function loginForm(): string|RedirectResponse
     {
         if (session()->get('isLoggedIn') === true) {
             return redirect()->to(site_url('dashboard'));
@@ -19,7 +22,7 @@ class AuthController extends BaseController
         ]);
     }
 
-    public function login()
+    public function login(): RedirectResponse
     {
         $employeeId = filter_var($this->request->getPost('employee_id'), FILTER_VALIDATE_INT);
         $password   = $this->request->getPost('password');
@@ -30,7 +33,13 @@ class AuthController extends BaseController
                 ->with('employee_id', (string) $this->request->getPost('employee_id'));
         }
 
-        $user = service('credentials')->attempt((int) $employeeId, $password);
+        try {
+            $user = service('credentials')->attempt((int) $employeeId, $password);
+        } catch (MisAuthenticationUnavailable $e) {
+            return redirect()->to(site_url('login'))
+                ->with('error', $e->getMessage())
+                ->with('employee_id', (string) $employeeId);
+        }
         if ($user === null) {
             return redirect()->to(site_url('login'))
                 ->with('error', 'Invalid employee ID or password.')
@@ -52,7 +61,15 @@ class AuthController extends BaseController
         return redirect()->to(site_url('dashboard'));
     }
 
-    public function logout()
+    public function logoutToken(): ResponseInterface
+    {
+        return $this->response->noCache()->setJSON([
+            'csrfTokenName' => csrf_token(),
+            'csrfToken' => csrf_hash(),
+        ]);
+    }
+
+    public function logout(): RedirectResponse
     {
         if (session()->get('isLoggedIn') === true) {
             $actor = session()->get();

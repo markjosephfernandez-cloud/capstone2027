@@ -9,16 +9,25 @@ use RuntimeException;
 
 class DistributionServerController extends \App\Controllers\BaseController
 {
-    protected function library(): ServerLibraryService { return new ServerLibraryService(); }
+    protected function library(): ServerLibraryService
+    {
+        return new ServerLibraryService();
+    }
     private function access()
     {
-        if (session()->get('isLoggedIn') !== true) return $this->response->setStatusCode(401)->setJSON(['message'=>'Sign in again to browse server files.']);
-        if (!RolePolicy::allows(session()->get(), 'files.assign') || !RolePolicy::allows(session()->get(), 'files.view_all')) return $this->response->setStatusCode(403)->setJSON(['message'=>'Your account cannot transmit server files.']);
+        if (session()->get('isLoggedIn') !== true) {
+            return $this->response->setStatusCode(401)->setJSON(['message' => 'Sign in again to browse server files.']);
+        }
+        if (! RolePolicy::allows(session()->get(), 'files.assign') || ! RolePolicy::allows(session()->get(), 'files.view_all')) {
+            return $this->response->setStatusCode(403)->setJSON(['message' => 'Your account cannot transmit server files.']);
+        }
         return null;
     }
     public function browse()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         session()->close();
         try {
             $data = (new ServerDistributionPicker($this->library()))->browse((string)$this->request->getGet('folder'), (string)$this->request->getGet('q'), max(1,(int)$this->request->getGet('page')));
@@ -27,7 +36,9 @@ class DistributionServerController extends \App\Controllers\BaseController
     }
     public function selection()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         $token = csrf_hash();
         session()->close();
         try {
@@ -37,7 +48,9 @@ class DistributionServerController extends \App\Controllers\BaseController
     }
     public function direct()
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         try {
             $picker = new ServerDistributionPicker($this->library());
             $paths = $picker->paths($this->request->getPost('server_file_ids') ?? []);
@@ -55,7 +68,9 @@ class DistributionServerController extends \App\Controllers\BaseController
 
     public function transmit(int $requestId)
     {
-        if ($denied = $this->access()) return $denied;
+        if ($denied = $this->access()) {
+            return $denied;
+        }
         try {
             $picker = new ServerDistributionPicker($this->library());
             $paths = $picker->paths($this->request->getPost('server_file_ids') ?? []);

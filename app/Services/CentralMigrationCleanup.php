@@ -14,13 +14,24 @@ final class CentralMigrationCleanup
 
     public function run(int $limit = 25): array
     {
-        if (!is_file($this->ledger)) return ['removed'=>0,'remaining'=>0];
+        if (! is_file($this->ledger)) {
+            return ['removed' => 0, 'remaining' => 0];
+        }
         $lock = fopen($this->ledger.'.lock','c');
-        if (!$lock || !flock($lock,LOCK_EX|LOCK_NB)) { if ($lock) fclose($lock); return ['removed'=>0,'busy'=>true]; }
+        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            if ($lock) {
+                fclose($lock);
+            }
+            return ['removed' => 0, 'busy' => true];
+        }
         try {
             $paths = json_decode((string)file_get_contents($this->ledger),true,512,JSON_THROW_ON_ERROR);
-            if (!is_array($paths) || array_filter($paths,static fn ($path) => !is_string($path))) throw new RuntimeException('Invalid migration cleanup ledger.');
-            if (!$paths) return ['removed'=>0,'remaining'=>0];
+            if (! is_array($paths) || array_filter($paths, static fn($path) => ! is_string($path))) {
+                throw new RuntimeException('Invalid migration cleanup ledger.');
+            }
+            if (! $paths) {
+                return ['removed' => 0, 'remaining' => 0];
+            }
             $root = (new ServerLibraryService($this->config))->root();
             $remaining = array_slice($paths,$limit); $removed = 0; $blocked = 0;
             foreach (array_slice($paths,0,$limit) as $path) {
@@ -30,11 +41,20 @@ final class CentralMigrationCleanup
                     $cursor = $root;
                     foreach (explode('/',substr($path,strlen($root)+1)) as $part) {
                         $cursor .= '/'.$part;
-                        if ($part === '' || $part === '.' || $part === '..' || is_link($cursor)) { $valid = false; break; }
+                        if ($part === '' || $part === '.' || $part === '..' || is_link($cursor)) {
+                            $valid = false;
+                            break;
+                        }
                     }
                 }
-                if (!$valid) { $remaining[] = $path; $blocked++; continue; }
-                if (!file_exists($path)) continue;
+                if (! $valid) {
+                    $remaining[] = $path;
+                    $blocked++;
+                    continue;
+                }
+                if (! file_exists($path)) {
+                    continue;
+                }
                 if (is_file($path) && @unlink($path)) $removed++;
                 else { $remaining[] = $path; $blocked++; }
             }

@@ -14,9 +14,15 @@ class AnalyzeVisualImage extends BaseCommand
     public function run(array $params)
     {
         $id = filter_var($params[0] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
-        if (!$id) { CLI::error('Usage: php spark media:visual-analyze <file-id>'); return EXIT_ERROR; }
+        if (! $id) {
+            CLI::error('Usage: php spark media:visual-analyze <file-id>');
+            return EXIT_ERROR;
+        }
         $file = db_connect()->table('files')->where('id',$id)->where('is_deleted',0)->get()->getRowArray();
-        if (!$file) { CLI::error('Image unavailable.'); return EXIT_ERROR; }
+        if (! $file) {
+            CLI::error('Image unavailable.');
+            return EXIT_ERROR;
+        }
         try {
             $start = microtime(true);
             $result = (new VisualMediaAnalysisService())->analyzeAndStore($file);

@@ -14,7 +14,9 @@
             if (($redirect = $this->requireLogin()) !== null) {
                 return $redirect;
             }
-            if (! RolePolicy::allows(session()->get(), 'ai.process')) return redirect()->to(site_url('workspace/file-management'))->with('error', 'Metadata Passports are restricted to Creative Staff.');
+            if (! RolePolicy::allows(session()->get(), 'ai.process')) {
+                return redirect()->to(site_url('workspace/file-management'))->with('error', 'Metadata Passports are restricted to Creative Staff.');
+            }
             $success = session()->getFlashdata('success');
             $error = session()->getFlashdata('error');
             session()->close();
@@ -90,7 +92,9 @@
             if (($redirect = $this->requireLogin()) !== null) {
                 return $redirect;
             }
-            if (! RolePolicy::allows(session()->get(), 'files.manage')) return redirect()->to(site_url('workspace/file-management'))->with('error', 'Watermarking is restricted to Creative Staff.');
+            if (! RolePolicy::allows(session()->get(), 'files.manage')) {
+                return redirect()->to(site_url('workspace/file-management'))->with('error', 'Watermarking is restricted to Creative Staff.');
+            }
             $db = db_connect();
             $settings = $db->tableExists('watermark_settings')
                 ? ($db->table('watermark_settings')->orderBy('id', 'ASC')->get(1)->getRowArray() ?? [])
@@ -255,13 +259,17 @@
             $context = [];
             foreach (['folder', 'q', 'type', 'page'] as $key) {
                 $value = $this->request->getPost($key);
-                if (is_string($value) && $value !== '') $context[$key] = mb_substr($value, 0, 100);
+                if (is_string($value) && $value !== '') {
+                    $context[$key] = mb_substr($value, 0, 100);
+                }
             }
             $returnUrl = site_url('workspace/watermarking') . ($context ? '?' . http_build_query($context) : '');
             $name = $this->request->getPost('logo_name');
             try {
                 $upload = $this->request->getFile('logo_file');
-                if ($upload === null) throw new RuntimeException('Choose a logo image to upload.');
+                if ($upload === null) {
+                    throw new RuntimeException('Choose a logo image to upload.');
+                }
                 $logo = service('watermarking')->addLogo($upload, is_string($name) ? $name : '');
             } catch (RuntimeException $error) {
                 return redirect()->to($returnUrl)->with('error', $error->getMessage())
@@ -561,7 +569,10 @@
             return session()->get('isLoggedIn') === true ? null : redirect()->to(site_url('login'));
         }
 
-        /** @param array<string, mixed> $data @return array<string, mixed> */
+        /**
+         * @param array<string, mixed> $data
+         * @return array<string, mixed>
+         */
         private function pageData(string $activePage, string $title, array $data): array
         {
             helper('dashboard');

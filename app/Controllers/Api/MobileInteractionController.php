@@ -9,7 +9,9 @@ class MobileInteractionController extends ApiController
 {
     public function engagement(int $id)
     {
-        if (! $this->published($id)) return $this->error('not_found', 'Media not found.', 404);
+        if (! $this->published($id)) {
+            return $this->error('not_found', 'Media not found.', 404);
+        }
         $userId = (int) $this->actor()['employee_id'];
         $db = db_connect();
         $reactionRow = $db->table('mobile_media_likes')->select('reaction')->where(['file_id' => $id, 'user_employee_id' => $userId])->get()->getRowArray();
@@ -36,7 +38,9 @@ class MobileInteractionController extends ApiController
 
     private function toggleReaction(int $id, string $reaction)
     {
-        if (! $this->published($id)) return $this->error('not_found', 'Media not found.', 404);
+        if (! $this->published($id)) {
+            return $this->error('not_found', 'Media not found.', 404);
+        }
         $userId = (int) $this->actor()['employee_id'];
         $table = db_connect()->table('mobile_media_likes');
         $where = ['file_id' => $id, 'user_employee_id' => $userId];
@@ -63,7 +67,9 @@ class MobileInteractionController extends ApiController
 
     public function comments(int $id)
     {
-        if (! $this->published($id)) return $this->error('not_found', 'Media not found.', 404);
+        if (! $this->published($id)) {
+            return $this->error('not_found', 'Media not found.', 404);
+        }
         $rows = db_connect()->table('mobile_comments c')
             ->select('c.id,c.comment,c.created_at,u.employee_id,u.name,u.email_address,p.username,p.profile_image')
             ->join('user u', 'u.employee_id=c.user_employee_id')
@@ -79,9 +85,13 @@ class MobileInteractionController extends ApiController
 
     public function addComment(int $id)
     {
-        if (! $this->published($id)) return $this->error('not_found', 'Media not found.', 404);
+        if (! $this->published($id)) {
+            return $this->error('not_found', 'Media not found.', 404);
+        }
         $comment = trim((string) ($this->input()['comment'] ?? ''));
-        if ($comment === '' || mb_strlen($comment) > 2000) return $this->error('invalid_comment', 'Comment must be between 1 and 2000 characters.', 422);
+        if ($comment === '' || mb_strlen($comment) > 2000) {
+            return $this->error('invalid_comment', 'Comment must be between 1 and 2000 characters.', 422);
+        }
         $now = Time::now('UTC')->toDateTimeString();
         $db = db_connect();
         $db->table('mobile_comments')->insert(['file_id' => $id, 'user_employee_id' => (int) $this->actor()['employee_id'], 'comment' => $comment, 'created_at' => $now]);

@@ -15,7 +15,10 @@ final class ChunkUploadService
     {
     }
 
-    /** @param array<string,string> $metadata @param callable(AssembledUpload):array $complete */
+    /**
+     * @param array<string,string> $metadata
+     * @param callable(AssembledUpload):array $complete
+     */
     public function accept(int $owner, string $id, int $total, int $offset, string $chunkPath, array $metadata, callable $complete): array
     {
         if ($owner < 1 || ! preg_match('/^[a-f0-9]{32}$/', $id) || $total < 1 || $offset < 0 || $offset >= $total) {
@@ -35,21 +38,33 @@ final class ChunkUploadService
         $key = hash('sha256', $owner . ':' . $id);
         $base = $this->root . '/' . $key;
         $lock = fopen($base . '.lock', 'c+b');
-        if ($lock === false) throw new RuntimeException('The upload could not be locked.');
+        if ($lock === false) {
+            throw new RuntimeException('The upload could not be locked.');
+        }
         try {
-            if (! flock($lock, LOCK_EX)) throw new RuntimeException('The upload is busy. Try again.');
+            if (! flock($lock, LOCK_EX)) {
+                throw new RuntimeException('The upload is busy. Try again.');
+            }
             $exists = is_file($base . '.json');
             $state = $exists ? json_decode(file_get_contents($base . '.json'), true) : null;
-            if ($exists && ! is_array($state)) throw new RuntimeException('Upload progress is unavailable. Please restart this file.');
-            if (! empty($state['cancelled'])) throw new RuntimeException('This upload was cancelled. Please start a new upload.');
+            if ($exists && ! is_array($state)) {
+                throw new RuntimeException('Upload progress is unavailable. Please restart this file.');
+            }
+            if (! empty($state['cancelled'])) {
+                throw new RuntimeException('This upload was cancelled. Please start a new upload.');
+            }
             if ($state === null) {
-                if ($offset !== 0) throw new RuntimeException('The upload expired. Please restart this file.');
+                if ($offset !== 0) {
+                    throw new RuntimeException('The upload expired. Please restart this file.');
+                }
                 $state = ['total' => $total, 'metadata' => $metadata, 'offset' => 0];
             }
             if ($state['total'] !== $total || $state['metadata'] !== $metadata) {
                 throw new RuntimeException('Upload details changed. Please restart this file.');
             }
-            if (isset($state['result'])) return $state['result'];
+            if (isset($state['result'])) {
+                return $state['result'];
+            }
             if (! empty($state['processing'])) {
                 throw new RuntimeException('This upload was already submitted for processing. Check File Management before retrying.');
             }
@@ -63,8 +78,12 @@ final class ChunkUploadService
             $output = fopen($base . '.part', 'c+b');
             $input = fopen($chunkPath, 'rb');
             if ($output === false || $input === false) {
-                if (is_resource($output)) fclose($output);
-                if (is_resource($input)) fclose($input);
+                if (is_resource($output)) {
+                    fclose($output);
+                }
+                if (is_resource($input)) {
+                    fclose($input);
+                }
                 throw new RuntimeException('The upload part could not be opened.');
             }
             try {
@@ -95,7 +114,9 @@ final class ChunkUploadService
                 $this->saveState($base, $state);
                 return $state['result'];
             } finally {
-                if (is_file($base . '.part')) @unlink($base . '.part');
+                if (is_file($base . '.part')) {
+                    @unlink($base . '.part');
+                }
             }
         } finally {
             flock($lock, LOCK_UN);
@@ -106,20 +127,32 @@ final class ChunkUploadService
     /** Cancel only this owner's unfinished upload, retaining a marker for late requests. */
     public function cancel(int $owner, string $id): array
     {
-        if ($owner < 1 || ! preg_match('/^[a-f0-9]{32}$/', $id)) throw new RuntimeException('The upload identifier is invalid.');
+        if ($owner < 1 || ! preg_match('/^[a-f0-9]{32}$/', $id)) {
+            throw new RuntimeException('The upload identifier is invalid.');
+        }
         if (! is_dir($this->root) && ! @mkdir($this->root, 0770, true) && ! is_dir($this->root)) {
             throw new RuntimeException('Temporary upload storage is unavailable.');
         }
         $base = $this->root . '/' . hash('sha256', $owner . ':' . $id);
         $lock = fopen($base . '.lock', 'c+b');
-        if ($lock === false) throw new RuntimeException('The upload could not be locked.');
+        if ($lock === false) {
+            throw new RuntimeException('The upload could not be locked.');
+        }
         try {
-            if (! flock($lock, LOCK_EX)) throw new RuntimeException('The upload is busy. Try again.');
+            if (! flock($lock, LOCK_EX)) {
+                throw new RuntimeException('The upload is busy. Try again.');
+            }
             $state = is_file($base . '.json') ? json_decode(file_get_contents($base . '.json'), true) : null;
-            if (isset($state['result'])) return ['cancelled' => false, 'complete' => true, 'result' => $state['result']['payload']];
-            if (! empty($state['processing'])) return ['cancelled' => false, 'processing' => true];
+            if (isset($state['result'])) {
+                return ['cancelled' => false, 'complete' => true, 'result' => $state['result']['payload']];
+            }
+            if (! empty($state['processing'])) {
+                return ['cancelled' => false, 'processing' => true];
+            }
             $this->saveState($base, ['cancelled' => true]);
-            if (is_file($base . '.part') && ! @unlink($base . '.part')) throw new RuntimeException('The upload stopped, but temporary data could not be removed.');
+            if (is_file($base . '.part') && ! @unlink($base . '.part')) {
+                throw new RuntimeException('The upload stopped, but temporary data could not be removed.');
+            }
             return ['cancelled' => true, 'complete' => false];
         } finally {
             flock($lock, LOCK_UN);
@@ -138,18 +171,28 @@ final class ChunkUploadService
     /** Remove stale partial files and receipts without interfering with an active upload. */
     public function pruneExpired(): void
     {
-        if (! is_dir($this->root)) return;
+        if (! is_dir($this->root)) {
+            return;
+        }
         $removed = 0;
         foreach (new \DirectoryIterator($this->root) as $entry) {
-            if (! $entry->isFile() || ! preg_match('/^[a-f0-9]{64}\.json$/', $entry->getFilename()) || $entry->getMTime() >= time() - self::RETENTION_SECONDS) continue;
+            if (! $entry->isFile() || ! preg_match('/^[a-f0-9]{64}\.json$/', $entry->getFilename()) || $entry->getMTime() >= time() - self::RETENTION_SECONDS) {
+                continue;
+            }
             $base = substr($entry->getPathname(), 0, -5);
             $lock = fopen($base . '.lock', 'c+b');
-            if ($lock === false) continue;
+            if ($lock === false) {
+                continue;
+            }
             try {
-                if (! flock($lock, LOCK_EX | LOCK_NB)) continue;
+                if (! flock($lock, LOCK_EX | LOCK_NB)) {
+                    continue;
+                }
                 clearstatcache(true, $base . '.json');
                 if (is_file($base . '.json') && filemtime($base . '.json') < time() - self::RETENTION_SECONDS) {
-                    if (is_file($base . '.part')) @unlink($base . '.part');
+                    if (is_file($base . '.part')) {
+                        @unlink($base . '.part');
+                    }
                     @unlink($base . '.json');
                     $removed++;
                 }

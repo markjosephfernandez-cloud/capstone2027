@@ -13,7 +13,10 @@ abstract class ApiController extends BaseController
         return service('authContext')->actor() ?? [];
     }
 
-    /** @param mixed $data @param array<string, mixed> $meta */
+    /**
+     * @param mixed $data
+     * @param array<string, mixed> $meta
+     */
     protected function success(mixed $data = null, int $status = 200, array $meta = []): ResponseInterface
     {
         $payload = ['status' => $status, 'data' => $data];

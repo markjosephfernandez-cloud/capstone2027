@@ -23,11 +23,15 @@ class TrashService
             $paths = [];
             if ($folderRootId !== null) {
                 $folder = $this->db->table('folder')->where('id',$folderRootId)->where('is_deleted',0)->get()->getRowArray();
-                if (!$folder) throw new RuntimeException('The folder is unavailable.');
+                if (! $folder) {
+                    throw new RuntimeException('The folder is unavailable.');
+                }
                 $paths[] = str_starts_with($folder['path'],'server-library/') ? substr($folder['path'],15) : $folder['path'];
             } else {
                 foreach ($files as $file) {
-                    if (!str_starts_with($file['filepath'],'server-library/')) throw new RuntimeException('Migrate this media before deleting it.');
+                    if (! str_starts_with($file['filepath'], 'server-library/')) {
+                        throw new RuntimeException('Migrate this media before deleting it.');
+                    }
                     $paths[] = substr($file['filepath'],15);
                 }
             }
@@ -73,7 +77,10 @@ class TrashService
         if ((new \Config\Storage())->centralized() && str_starts_with($file['filepath'],'server-library/')) {
             $editor = new ServerLibraryEditor(new ServerLibraryService());
             foreach ($editor->state()['trash'] as $id=>$record) {
-                if ($record['path'] === substr($file['filepath'],15)) { $editor->restore($id); return; }
+                if ($record['path'] === substr($file['filepath'], 15)) {
+                    $editor->restore($id);
+                    return;
+                }
             }
             throw new RuntimeException('Restore this item from its folder on the Trash page.');
         }

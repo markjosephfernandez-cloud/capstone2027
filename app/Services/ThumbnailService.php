@@ -24,7 +24,9 @@ class ThumbnailService
         try {
             return $this->buildThumbnail($source);
         } finally {
-            if ($previousExecutionLimit > 0) set_time_limit($previousExecutionLimit);
+            if ($previousExecutionLimit > 0) {
+                set_time_limit($previousExecutionLimit);
+            }
         }
     }
 
@@ -116,12 +118,20 @@ class ThumbnailService
             }
             return $target;
         } finally {
-            if ($original instanceof \GdImage) imagedestroy($original);
-            if ($thumbnail !== null) imagedestroy($thumbnail);
+            if ($original instanceof \GdImage) {
+                imagedestroy($original);
+            }
+            if ($thumbnail !== null) {
+                imagedestroy($thumbnail);
+            }
             // PHP 8 releases GD memory when its objects are no longer referenced.
             unset($original, $thumbnail, $rotated);
-            if (is_string($temporary) && is_file($temporary)) @unlink($temporary);
-            if ($memoryAdjusted) ini_set('memory_limit', $previousLimit);
+            if (is_string($temporary) && is_file($temporary)) {
+                @unlink($temporary);
+            }
+            if ($memoryAdjusted) {
+                ini_set('memory_limit', $previousLimit);
+            }
         }
     }
 }

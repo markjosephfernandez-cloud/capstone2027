@@ -17,7 +17,9 @@ class StorageService
 
     public function root(): string
     {
-        if ($this->config->centralized()) return (new ServerLibraryService($this->config))->root();
+        if ($this->config->centralized()) {
+            return (new ServerLibraryService($this->config))->root();
+        }
         $root = $this->config->root();
         if (! is_dir($root) && ! mkdir($root, 0775, true) && ! is_dir($root)) {
             throw new RuntimeException('Unable to initialise the media storage directory.');
@@ -39,12 +41,16 @@ class StorageService
             $suffix = [];
             while (!file_exists($ancestor) && !is_link($ancestor)) {
                 $parent = dirname($ancestor);
-                if ($parent === $ancestor) throw new RuntimeException('Local storage is unavailable.');
+                if ($parent === $ancestor) {
+                    throw new RuntimeException('Local storage is unavailable.');
+                }
                 array_unshift($suffix, basename($ancestor));
                 $ancestor = $parent;
             }
             $resolved = realpath($ancestor);
-            if ($resolved === false) throw new RuntimeException('Local storage is unavailable.');
+            if ($resolved === false) {
+                throw new RuntimeException('Local storage is unavailable.');
+            }
             $destination = rtrim($resolved, DIRECTORY_SEPARATOR) . ($suffix ? DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR,$suffix) : '');
             if ($destination === $sourceRoot || str_starts_with($destination,$sourceRoot.DIRECTORY_SEPARATOR)
                 || str_starts_with($sourceRoot,$destination.DIRECTORY_SEPARATOR)) {
@@ -57,8 +63,12 @@ class StorageService
     {
         if ($this->config->centralized()) {
             $root = (new ServerLibraryService($this->config))->root() . '/DEPARTMENT';
-            if (is_link($root)) throw new RuntimeException('Linked department storage is unavailable.');
-            if (!is_dir($root) && !mkdir($root, 0770) && !is_dir($root)) throw new RuntimeException('Department storage is unavailable.');
+            if (is_link($root)) {
+                throw new RuntimeException('Linked department storage is unavailable.');
+            }
+            if (! is_dir($root) && ! mkdir($root, 0770) && ! is_dir($root)) {
+                throw new RuntimeException('Department storage is unavailable.');
+            }
             return $root;
         }
         $root = $this->config->departmentRoot();
@@ -78,10 +88,20 @@ class StorageService
     {
         if ($this->config->centralized()) {
             $path = (string)$path;
-            if ($path === '' && !$allowEmpty) throw new RuntimeException('A folder path is required.');
-            if ($path === '') return '';
-            if (str_starts_with($path,'/') || str_contains($path,'\\') || preg_match('/[\x00-\x1f]/',$path) || preg_match('/^[A-Za-z]:/',$path)) throw new RuntimeException('Invalid folder path.');
-            foreach (explode('/',$path) as $part) if ($part === '' || str_starts_with($part,'.')) throw new RuntimeException('Invalid folder path.');
+            if ($path === '' && ! $allowEmpty) {
+                throw new RuntimeException('A folder path is required.');
+            }
+            if ($path === '') {
+                return '';
+            }
+            if (str_starts_with($path, '/') || str_contains($path, '\\') || preg_match('/[\x00-\x1f]/', $path) || preg_match('/^[A-Za-z]:/', $path)) {
+                throw new RuntimeException('Invalid folder path.');
+            }
+            foreach (explode('/', $path) as $part) {
+                if ($part === '' || str_starts_with($part, '.')) {
+                    throw new RuntimeException('Invalid folder path.');
+                }
+            }
             return $path;
         }
         $path = str_replace('\\', '/', trim((string) $path));
@@ -117,8 +137,12 @@ class StorageService
                 $cursor = $library->root();
                 foreach ($relativePath === '' ? [] : explode('/',$relativePath) as $part) {
                     $cursor .= '/'.$part;
-                    if (is_link($cursor)) throw new RuntimeException('Linked server paths are unavailable.');
-                    if (!is_dir($cursor) && !mkdir($cursor,0770) && !is_dir($cursor)) throw new RuntimeException('Cannot create server folder.');
+                    if (is_link($cursor)) {
+                        throw new RuntimeException('Linked server paths are unavailable.');
+                    }
+                    if (! is_dir($cursor) && ! mkdir($cursor, 0770) && ! is_dir($cursor)) {
+                        throw new RuntimeException('Cannot create server folder.');
+                    }
                 }
             }
             return $library->resolve($relativePath,true);
@@ -156,7 +180,9 @@ class StorageService
             $cursor = $root;
             foreach (explode('/',$relativePath) as $part) {
                 $cursor .= '/'.$part;
-                if (is_link($cursor)) throw new RuntimeException('Linked department paths are unavailable.');
+                if (is_link($cursor)) {
+                    throw new RuntimeException('Linked department paths are unavailable.');
+                }
             }
         }
         if (! is_dir($target) && ! mkdir($target, 0775, true) && ! is_dir($target)) {
@@ -254,16 +280,24 @@ class StorageService
         try {
             foreach ($sources as $sourcePath) {
                 $source = realpath($sourcePath);
-                if ($source === false || !is_file($source) || !is_readable($source)) throw new RuntimeException('The server file is unavailable.');
+                if ($source === false || ! is_file($source) || ! is_readable($source)) {
+                    throw new RuntimeException('The server file is unavailable.');
+                }
                 $size = filesize($source);
-                if ($size === false || ($this->config->maxUploadBytes() > 0 && $size > $this->config->maxUploadBytes())) throw new RuntimeException('The server file exceeds the permitted size.');
+                if ($size === false || $this->config->maxUploadBytes() > 0 && $size > $this->config->maxUploadBytes()) {
+                    throw new RuntimeException('The server file exceeds the permitted size.');
+                }
                 $mime = \App\Libraries\MediaMimeType::forFile($source);
-                if (!in_array($mime, $this->config->allowedMimeTypes(), true)) throw new RuntimeException('This server file type is not allowed.');
+                if (! in_array($mime, $this->config->allowedMimeTypes(), true)) {
+                    throw new RuntimeException('This server file type is not allowed.');
+                }
                 $filename = $this->availableFilename($directory, $this->safeFilename(basename($source)));
                 $target = $directory . DIRECTORY_SEPARATOR . $filename;
                 // Reserve names before starting workers, including duplicate basenames.
                 $reservation = @fopen($target, 'x');
-                if ($reservation === false) throw new RuntimeException('The local copy could not be reserved.');
+                if ($reservation === false) {
+                    throw new RuntimeException('The local copy could not be reserved.');
+                }
                 fclose($reservation);
                 $copies[] = ['filename'=>$filename, 'filepath'=>$target, 'mimeType'=>$mime, 'size'=>(int)$size];
                 $jobs[] = [$source, $target];
@@ -271,11 +305,15 @@ class StorageService
             (new \App\Libraries\ParallelFileCopier())->copy($jobs);
             foreach ($copies as $copy) {
                 clearstatcache(true, $copy['filepath']);
-                if (filesize($copy['filepath']) !== $copy['size']) throw new RuntimeException('A server file changed or was only partly copied.');
+                if (filesize($copy['filepath']) !== $copy['size']) {
+                    throw new RuntimeException('A server file changed or was only partly copied.');
+                }
             }
             return $copies;
         } catch (\Throwable $error) {
-            foreach ($copies as $copy) $this->deleteDatabaseFile($this->databasePath($copy['filepath']));
+            foreach ($copies as $copy) {
+                $this->deleteDatabaseFile($this->databasePath($copy['filepath']));
+            }
             throw $error;
         }
     }
@@ -548,12 +586,16 @@ class StorageService
     {
         if (str_starts_with($storedPath, 'server-library/')) {
             $relative = substr($storedPath, 15);
-            if (preg_match('#(^|/)(\.|\.\.)(/|$)#', $relative) || str_contains($relative, '\\') || str_contains($relative, "\0")) throw new RuntimeException('Invalid server path.');
+            if (preg_match('#(^|/)(\.|\.\.)(/|$)#', $relative) || str_contains($relative, '\\') || str_contains($relative, "\x00")) {
+                throw new RuntimeException('Invalid server path.');
+            }
             $root = (new ServerLibraryService($this->config))->root();
             $candidate = $root;
             foreach (explode('/', $relative) as $part) {
                 $candidate .= '/' . $part;
-                if (is_link($candidate)) throw new RuntimeException('Linked server paths are unavailable.');
+                if (is_link($candidate)) {
+                    throw new RuntimeException('Linked server paths are unavailable.');
+                }
             }
             return [$candidate];
         }

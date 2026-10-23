@@ -6,30 +6,45 @@ use RuntimeException;
 /** Department metadata and storage are owned independently of admin originals. */
 class DepartmentLibraryService
 {
-    public function __construct(private BaseConnection $db, private StorageService $storage) {}
+    public function __construct(private BaseConnection $db, private StorageService $storage)
+    {
+    }
 
     public function capture(array $assignment, array $file, array &$createdPaths): int
     {
-        if (($assignment['status'] ?? '') !== 'completed') throw new RuntimeException('Only completed deliveries can enter the department library.');
+        if (($assignment['status'] ?? '') !== 'completed') {
+            throw new RuntimeException('Only completed deliveries can enter the department library.');
+        }
         $department = (string)$assignment['department'];
         $delivery = trim((string)($assignment['delivery_filepath'] ?? ''));
-        if ($delivery === '') throw new RuntimeException('The department delivery path is missing.');
+        if ($delivery === '') {
+            throw new RuntimeException('The department delivery path is missing.');
+        }
         $key = hash('sha256', $delivery);
         $existing = $this->db->table('department_files')->where('department',$department)->where('delivery_key',$key)->get()->getRowArray();
-        if ($existing) return (int)$existing['id']; // Never resurrect independently deleted copies.
+        if ($existing) {
+            return (int) $existing['id'];
+        } // Never resurrect independently deleted copies.
         try {
             $physical = $this->storage->resolveDatabaseFile($delivery);
             $ownerRoot = realpath($this->storage->departmentRoot() . '/' . $this->storage->departmentFolderName($department));
-            if (!$ownerRoot || !str_starts_with($physical, $ownerRoot . DIRECTORY_SEPARATOR)) throw new RuntimeException('Delivery is outside its department storage.');
+            if (! $ownerRoot || ! str_starts_with($physical, $ownerRoot . DIRECTORY_SEPARATOR)) {
+                throw new RuntimeException('Delivery is outside its department storage.');
+            }
         } catch (RuntimeException $error) {
             // An old recovery record may have moved its only copy into admin Trash.
             $trash = $this->db->tableExists('trashfiles') ? $this->db->table('trashfiles')->where('file_id',$file['id'])->get()->getRowArray() : null;
-            if (!$trash || ($trash['original_filepath'] ?? '') !== $delivery || (int)$file['is_deleted'] !== 1) throw $error;
+            if (! $trash || ($trash['original_filepath'] ?? '') !== $delivery || (int) $file['is_deleted'] !== 1) {
+                throw $error;
+            }
             $physical = $this->storage->resolveDatabaseFile($file['filepath']);
         }
         // Recovery records can use the department copy as their admin original. Detach it.
         $sameAsOriginal = false;
-        try { $sameAsOriginal = $physical === $this->storage->resolveDatabaseFile((string)$file['filepath']); } catch (RuntimeException) {}
+        try {
+            $sameAsOriginal = $physical === $this->storage->resolveDatabaseFile((string) $file['filepath']);
+        } catch (RuntimeException) {
+        }
         if ($sameAsOriginal) {
             $copy = $this->storage->storeDepartmentCopy($physical, $department, 'Independent library');
             $createdPaths[] = $copy['filepath'];
@@ -44,7 +59,9 @@ class DepartmentLibraryService
             'folder_id'=>(new \Config\Storage())->centralized() ? $this->deliveryFolder($department,$delivery) : $this->folder($department, empty($file['folder_id']) ? null : (int)$file['folder_id']),
             'assigned_at'=>$assignment['completed_at'] ?? $assignment['sent_at'] ?? gmdate('Y-m-d H:i:s'),
         ]);
-        if (!$this->db->table('department_files')->insert($snapshot)) throw new RuntimeException('Could not save independent department record.');
+        if (! $this->db->table('department_files')->insert($snapshot)) {
+            throw new RuntimeException('Could not save independent department record.');
+        }
         return (int)$this->db->insertID();
     }
 
@@ -58,8 +75,12 @@ class DepartmentLibraryService
     {
         $root = $this->storage->departmentRoot() . '/' . $this->storage->departmentFolderName($department);
         $physical = $this->storage->resolveDatabaseDirectory($delivery);
-        if ($physical === $root) return null;
-        if (!str_starts_with($physical,$root.'/')) throw new RuntimeException('Delivery is outside the department.');
+        if ($physical === $root) {
+            return null;
+        }
+        if (! str_starts_with($physical, $root . '/')) {
+            throw new RuntimeException('Delivery is outside the department.');
+        }
         $relative = substr($physical,strlen($root)+1);
         $parent = null; $path = $root;
         foreach (explode('/',$relative) as $name) {
@@ -77,13 +98,21 @@ class DepartmentLibraryService
 
     private function folder(string $department, ?int $sourceId, array $visited = []): ?int
     {
-        if (!$sourceId) return null;
-        if (isset($visited[$sourceId])) throw new RuntimeException('Folder hierarchy contains a cycle.');
+        if (! $sourceId) {
+            return null;
+        }
+        if (isset($visited[$sourceId])) {
+            throw new RuntimeException('Folder hierarchy contains a cycle.');
+        }
         $visited[$sourceId]=true;
         $existing=$this->db->table('department_folders')->where('department',$department)->where('source_folder_id',$sourceId)->get()->getRowArray();
-        if ($existing) return (int)$existing['id'];
+        if ($existing) {
+            return (int) $existing['id'];
+        }
         $source=$this->db->table('folder')->where('id',$sourceId)->get()->getRowArray();
-        if (!$source) return null;
+        if (! $source) {
+            return null;
+        }
         $parent=$this->folder($department, empty($source['parent_id'])?null:(int)$source['parent_id'], $visited);
         if (!$this->db->table('department_folders')->insert([
             'department'=>$department,'source_folder_id'=>$sourceId,'parent_id'=>$parent,'name'=>$source['name'],
@@ -99,18 +128,30 @@ class DepartmentLibraryService
         $report=['captured'=>0,'existing'=>0,'unavailable'=>[]];
         foreach ($rows as $assignment) {
             $file=$this->db->table('files')->where('id',$assignment['media_id'])->get()->getRowArray();
-            if (!$file || empty($assignment['delivery_filepath'])) { $report['unavailable'][]=(int)$assignment['id']; continue; }
+            if (! $file || empty($assignment['delivery_filepath'])) {
+                $report['unavailable'][] = (int) $assignment['id'];
+                continue;
+            }
             $key=hash('sha256',$assignment['delivery_filepath']);
-            if ($this->db->table('department_files')->where('department',$assignment['department'])->where('delivery_key',$key)->countAllResults()) { ++$report['existing']; continue; }
+            if ($this->db->table('department_files')->where('department', $assignment['department'])->where('delivery_key', $key)->countAllResults()) {
+                ++$report['existing'];
+                continue;
+            }
             $created=[];
             $this->db->transBegin();
             try {
                 $this->capture($assignment,$file,$created);
-                if (!$this->db->transStatus() || !$this->db->transCommit()) throw new RuntimeException('Department migration transaction failed.');
+                if (! $this->db->transStatus() || ! $this->db->transCommit()) {
+                    throw new RuntimeException('Department migration transaction failed.');
+                }
                 ++$report['captured'];
             } catch (\Throwable $error) {
                 $this->db->transRollback();
-                foreach ($created as $path) if (is_file($path)) unlink($path);
+                foreach ($created as $path) {
+                    if (is_file($path)) {
+                        unlink($path);
+                    }
+                }
                 throw $error;
             }
         }

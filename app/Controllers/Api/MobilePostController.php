@@ -10,7 +10,9 @@ class MobilePostController extends ApiController
 {
     public function index()
     {
-        if ($denied = $this->requireRole(['admin', 'super_admin'])) return $denied;
+        if ($denied = $this->requireRole(['admin', 'super_admin'])) {
+            return $denied;
+        }
         $offset = max(0, (int)$this->request->getGet('offset'));
         $table = db_connect()->prefixTable('files');
         $postsTable = db_connect()->prefixTable('mobile_posts');
@@ -28,9 +30,13 @@ class MobilePostController extends ApiController
 
     public function show(int $id)
     {
-        if ($denied = $this->requireRole(['admin', 'super_admin'])) return $denied;
+        if ($denied = $this->requireRole(['admin', 'super_admin'])) {
+            return $denied;
+        }
         $post = db_connect()->table('mobile_posts')->where('id', $id)->get()->getRowArray();
-        if (!$post || !(new AppPublishingService())->members($id)) return $this->error('not_found', 'Post not found.', 404);
+        if (! $post || ! (new AppPublishingService())->members($id)) {
+            return $this->error('not_found', 'Post not found.', 404);
+        }
         return $this->success($this->payload($post))->setHeader('Cache-Control', 'private, no-store');
     }
 
@@ -46,7 +52,9 @@ class MobilePostController extends ApiController
 
     private function save(int $id, bool $publish, bool $unpublish = false)
     {
-        if ($denied = $this->requireRole(['admin', 'super_admin'])) return $denied;
+        if ($denied = $this->requireRole(['admin', 'super_admin'])) {
+            return $denied;
+        }
         try {
             $service = new AppPublishingService();
             $post = $unpublish ? $service->unpublish($id, $this->input())
@@ -61,9 +69,13 @@ class MobilePostController extends ApiController
 
     public function thumbnail(int $id)
     {
-        if ($denied = $this->requireRole(['admin', 'super_admin'])) return $denied;
+        if ($denied = $this->requireRole(['admin', 'super_admin'])) {
+            return $denied;
+        }
         $file = (new FileModel())->where('is_deleted', 0)->where('release_status', 'published')->where('app_post_id IS NOT NULL', null, false)->find($id);
-        if (!$file || !in_array($file['media_kind'], ['image', 'video'], true)) return $this->error('not_found', 'Media not found.', 404);
+        if (! $file || ! in_array($file['media_kind'], ['image', 'video'], true)) {
+            return $this->error('not_found', 'Media not found.', 404);
+        }
         session()->close();
         try {
             $source = service('storage')->resolveDatabaseFile($file['filepath']);

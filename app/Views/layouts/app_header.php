@@ -114,7 +114,7 @@
         <ul class="dropdown-menu sidebar-profile-menu">
             <li class="dropdown-header"><h6><?= esc((string) ($user['name'] ?? 'User')) ?></h6><span><?= esc($roleLabel) ?></span></li>
             <li><hr class="dropdown-divider"></li>
-            <li><form action="<?= esc(site_url('logout')) ?>" method="post"><?= csrf_field() ?><button class="dropdown-item d-flex align-items-center" type="submit"><i class="bi bi-box-arrow-right me-2"></i><span>Sign Out</span></button></form></li>
+            <li><form action="<?= esc(site_url('logout')) ?>" method="post" data-logout-token-url="<?= esc(site_url('logout/token')) ?>"><?= csrf_field() ?><button class="dropdown-item d-flex align-items-center" type="submit"><i class="bi bi-box-arrow-right me-2"></i><span>Sign Out</span></button></form></li>
         </ul>
     </div>
 </aside>

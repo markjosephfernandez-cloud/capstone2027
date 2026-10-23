@@ -8,6 +8,30 @@ use Config\Storage;
 
 final class ServerLibraryEditorTest extends CIUnitTestCase
 {
+    public function testTrashAuditCapturesReadablePathBeforeDeletion(): void
+    {
+        $this->editor->trash(['Album/photo.jpg'], 7);
+        $items = $this->editor->trashItems();
+        $id = $items[0]['id'];
+        $label = $this->editor->trashAuditLabel($id);
+        $this->assertSame('Album/photo.jpg', $label);
+        $this->editor->permanentlyDelete($id);
+        $this->assertSame([], $this->editor->trashItems());
+        $this->assertSame('Album/photo.jpg', $label);
+    }
+
+    public function testLegacyTrashAuditDisplaysStoredNameSafely(): void
+    {
+        $description = 'Trash item external-' . bin2hex('<photo & copy>.jpg');
+        $formatted = \App\Libraries\TrashAuditDescription::format('SERVER_TRASH_DELETE', $description);
+        $this->assertSame('Permanently deleted from server Trash: <photo & copy>.jpg (stored Trash name; original path unknown)', $formatted);
+        $this->assertStringContainsString('&lt;photo &amp; copy&gt;.jpg', esc($formatted));
+        $this->assertSame($description, \App\Libraries\TrashAuditDescription::format('OTHER_ACTION', $description));
+        foreach (['Trash item external-f', 'Trash item external-00', 'Trash item abc123'] as $invalid) {
+            $this->assertSame($invalid, \App\Libraries\TrashAuditDescription::format('SERVER_TRASH_DELETE', $invalid));
+        }
+    }
+
     private string $root;
     private ServerLibraryService $library;
     private ServerLibraryEditor $editor;
@@ -48,6 +72,46 @@ final class ServerLibraryEditorTest extends CIUnitTestCase
     {
         try { $operation(); $this->fail('The unsafe operation was accepted.'); }
         catch (RuntimeException $exception) { $this->assertNotSame('', $exception->getMessage()); }
+    }
+
+    public function testTrashPreviewsResolveRenamedFilesAndFolderChildrenWithoutRestoring(): void
+    {
+        $this->editor->rename('Album/photo.jpg', 'renamed.jpg');
+        $this->editor->trash(['Album'], 7);
+        $id = array_key_first($this->editor->state()['trash']);
+        $before = $this->editor->state();
+        $path = $this->editor->previewPath($id, 'renamed.jpg');
+        $this->assertSame('original', file_get_contents($path));
+        $this->assertStringContainsString('/TRASH/', $path);
+        $this->assertSame(['renamed.jpg'], array_column($this->editor->previewFolder($id)['items'], 'name'));
+        foreach (['../escape', '/absolute', 'renamed.jpg/../escape', 'missing.jpg', '.hidden', 'bad\\path'] as $child) {
+            $this->reject(fn () => $this->editor->previewPath($id, $child));
+        }
+        symlink($this->root . '/share', dirname($path) . '/linked');
+        $this->reject(fn () => $this->editor->previewPath($id, 'linked/anything'));
+        $this->reject(fn () => $this->editor->previewPath('../invalid'));
+        $this->assertSame($before, $this->editor->state());
+        $this->assertDirectoryDoesNotExist($this->root . '/share/Album');
+    }
+
+    public function testTrashPreviewResolvesExternalAndLegacyStorageButRejectsMissingFiles(): void
+    {
+        mkdir($this->root . '/share/TRASH');
+        file_put_contents($this->root . '/share/TRASH/external.png', 'external');
+        $external = 'external-' . bin2hex('external.png');
+        $this->assertSame('external', file_get_contents($this->editor->previewPath($external)));
+        $this->assertSame([], $this->editor->state()['trash']);
+        $this->editor->trash(['Album/photo.jpg'], 7);
+        $state = $this->editor->state();
+        $id = array_key_first($state['trash']);
+        $old = $this->editor->previewPath($id);
+        $legacy = $this->root . '/share/.greyhound-library/trash-' . $id;
+        rename($old, $legacy);
+        unset($state['trash'][$id]['stored_name']);
+        file_put_contents($this->root . '/share/.greyhound-library/metadata.json', json_encode($state));
+        $this->assertSame(realpath($legacy), $this->editor->previewPath($id));
+        unlink($legacy);
+        $this->reject(fn () => $this->editor->previewPath($id));
     }
 
     public function testCreateRenameMoveAndTrashRestorePreserveContentsAndTags(): void

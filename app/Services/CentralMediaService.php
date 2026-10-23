@@ -2,18 +2,21 @@
 namespace App\Services;
 
 use App\Libraries\MediaMimeType;
-use Config\Storage;
 use RuntimeException;
 
 /** Stable identities bridge catalog paths to existing publishing/review records. */
 class CentralMediaService
 {
-    public function __construct(private readonly ServerLibraryService $library = new ServerLibraryService()) {}
+    public function __construct(private readonly ServerLibraryService $library = new ServerLibraryService())
+    {
+    }
 
     public function identity(string $path, bool $directory = false): array
     {
         $path = $this->library->relative($path);
-        if ($path === '') throw new RuntimeException('The root has no media identity.');
+        if ($path === '') {
+            throw new RuntimeException('The root has no media identity.');
+        }
         $db = db_connect();
         $key = ['source_key'=>$this->library->catalogSourceKey(), 'path_hash'=>hash('sha256',$path)];
         $row = $db->table('server_media')->where($key)->get()->getRowArray();
@@ -21,7 +24,9 @@ class CentralMediaService
             $db->table('server_media')->ignore(true)->insert($key + ['path'=>$path,'is_dir'=>$directory ? 1 : 0,'is_deleted'=>0,'updated_at'=>gmdate('Y-m-d H:i:s')]);
             $row = $db->table('server_media')->where($key)->get()->getRowArray();
         }
-        if (!$row) throw new RuntimeException('Could not register server media.');
+        if (! $row) {
+            throw new RuntimeException('Could not register server media.');
+        }
         return $row;
     }
 
@@ -42,7 +47,9 @@ class CentralMediaService
                 'media_kind'=>str_starts_with($mime,'image/') ? 'image' : (str_starts_with($mime,'video/') ? 'video' : 'document'),
                 'folder_id'=>$folderId, 'employee_id'=>$actor['employee_id'] ?? null, 'dateupload'=>gmdate('Y-m-d H:i:s'),
                 'is_deleted'=>0, 'last_action'=>'uploaded', 'last_action_at'=>gmdate('Y-m-d H:i:s')];
-            if (!$db->table('files')->insert($data)) throw new RuntimeException('Could not register the original.');
+            if (! $db->table('files')->insert($data)) {
+                throw new RuntimeException('Could not register the original.');
+            }
             $id = (int)$db->insertID();
         } else $id = (int)$existing['id'];
         $update = ['file_id'=>$id, 'is_deleted'=>0, 'updated_at'=>gmdate('Y-m-d H:i:s')];
@@ -57,13 +64,17 @@ class CentralMediaService
     {
         $this->library->resolve($path,true);
         $row = $this->identity($path,true);
-        if (!empty($row['folder_id'])) return (int)$row['folder_id'];
+        if (! empty($row['folder_id'])) {
+            return (int) $row['folder_id'];
+        }
         $parent = dirname($path) === '.' ? '' : dirname($path);
         $parentId = $parent === '' ? null : $this->folder($parent);
         $db = db_connect();
         $existing = $db->table('folder')->where('path','server-library/'.$path)->where('is_deleted',0)->get()->getRowArray();
         if (!$existing) {
-            if (!$db->table('folder')->insert(['name'=>basename($path),'path'=>'server-library/'.$path,'parent_id'=>$parentId,'is_deleted'=>0,'created_at'=>gmdate('Y-m-d H:i:s')])) throw new RuntimeException('Could not register folder.');
+            if (! $db->table('folder')->insert(['name' => basename($path), 'path' => 'server-library/' . $path, 'parent_id' => $parentId, 'is_deleted' => 0, 'created_at' => gmdate('Y-m-d H:i:s')])) {
+                throw new RuntimeException('Could not register folder.');
+            }
             $id = (int)$db->insertID();
         } else $id = (int)$existing['id'];
         $db->table('server_media')->where('id',$row['id'])->update(['folder_id'=>$id]);
@@ -72,16 +83,22 @@ class CentralMediaService
 
     public function viewed(string $path, int $employee): void
     {
-        if ($employee < 1) return;
+        if ($employee < 1) {
+            return;
+        }
         $path = $this->library->relative($path);
         $db = db_connect();
         $key = ['source_key'=>$this->library->catalogSourceKey(),'path_hash'=>hash('sha256',$path),'is_dir'=>0];
         $row = $db->table('server_media')->where($key)->get()->getRowArray();
         if (!$row) {
-            if (!$db->tableExists('server_library_index') || !$db->table('server_library_index')->where($key)->countAllResults()) return;
+            if (! $db->tableExists('server_library_index') || ! $db->table('server_library_index')->where($key)->countAllResults()) {
+                return;
+            }
             $row = $this->identity($path);
         }
-        if ((int)$row['is_deleted'] === 1) return;
+        if ((int) $row['is_deleted'] === 1) {
+            return;
+        }
         $db->table('server_recent')->onConstraint(['employee_id','media_id'])->upsert([
             'employee_id'=>$employee,'media_id'=>$row['id'],'viewed_at'=>gmdate('Y-m-d H:i:s')]);
     }
@@ -109,24 +126,42 @@ class CentralMediaService
             $parentId = $parent === '.' ? null : $this->folder($parent);
             if ($row['file_id']) {
                 $db->table('files')->where('id',$row['file_id'])->update(['filepath'=>'server-library/'.$path,'filename'=>basename($path),'folder_id'=>$parentId]);
-                if ($db->tableExists('tags')) $db->table('tags')->where('file_id',$row['file_id'])->update(['filepath'=>'server-library/'.$path]);
+                if ($db->tableExists('tags')) {
+                    $db->table('tags')->where('file_id', $row['file_id'])->update(['filepath' => 'server-library/' . $path]);
+                }
             }
-            if ($row['folder_id']) $db->table('folder')->where('id',$row['folder_id'])->update(['path'=>'server-library/'.$path,'name'=>basename($path),'parent_id'=>$parentId]);
+            if ($row['folder_id']) {
+                $db->table('folder')->where('id', $row['folder_id'])->update(['path' => 'server-library/' . $path, 'name' => basename($path), 'parent_id' => $parentId]);
+            }
         }
     }
 
-    public function markDeleted(string $path, bool $deleted, array $identities = []): array
+    public function markDeleted(string $path, bool $deleted, array $identities = [], bool $recursive = true): array
     {
         $db = db_connect();
-        $query = $db->table('server_media')->where('source_key',$this->library->catalogSourceKey())->where('is_deleted',$deleted ? 0 : 1)
-            ->groupStart()->where('path',$path)->orLike('path',$path.'/','after')->groupEnd();
-        if ($identities) $query->whereIn('id',$identities);
+        $query = $db->table('server_media')->where('source_key',$this->library->catalogSourceKey())->where('is_deleted',$deleted ? 0 : 1);
+        if ($recursive) {
+            $query->groupStart()->where('path',$path)->orLike('path',$path.'/','after')->groupEnd();
+        } else {
+            $query->where('path', $path);
+            // Deleted identities have a tombstone hash; only live rows use the path hash.
+            if ($deleted) {
+                $query->where('path_hash', hash('sha256', $path));
+            }
+        }
+        if ($identities) {
+            $query->whereIn('id', $identities);
+        }
         $rows = $query->get()->getResultArray();
         foreach ($rows as $row) {
             $db->table('server_media')->where('id',$row['id'])->update(['is_deleted'=>(int)$deleted,
                 'path_hash'=>hash('sha256',$deleted ? 'trash:'.$row['id'] : $row['path']),'updated_at'=>gmdate('Y-m-d H:i:s')]);
-            if ($row['file_id']) $db->table('files')->where('id',$row['file_id'])->update(['is_deleted'=>(int)$deleted]);
-            if ($row['folder_id']) $db->table('folder')->where('id',$row['folder_id'])->update(['is_deleted'=>(int)$deleted]);
+            if ($row['file_id']) {
+                $db->table('files')->where('id', $row['file_id'])->update(['is_deleted' => (int) $deleted]);
+            }
+            if ($row['folder_id']) {
+                $db->table('folder')->where('id', $row['folder_id'])->update(['is_deleted' => (int) $deleted]);
+            }
         }
         return array_column($rows,'id');
     }
@@ -135,10 +170,14 @@ class CentralMediaService
     {
         $db = db_connect();
         $media = $db->table('server_media')->where('source_key',$this->library->catalogSourceKey())->where('file_id',$fileId)->where('is_deleted',0)->get()->getRowArray();
-        if (!$media) return;
+        if (! $media) {
+            return;
+        }
         $file = $db->table('files')->where('id',$fileId)->get()->getRowArray();
         $review = $db->table('ai_event_detections')->where('media_id',$fileId)->get()->getRowArray();
-        if (!$file || !$review) return;
+        if (! $file || ! $review) {
+            return;
+        }
         (new ServerLibraryEditor($this->library))->saveAnalysis($media['path'],[
             'event_name'=>$review['event_name'],'classification'=>$file['classification'],'confidence_score'=>$review['confidence_score'],
             'needs_review'=>(bool)$review['needs_review'],'reviewed_at'=>$review['reviewed_at'],'reviewed_by'=>$review['reviewed_by'],

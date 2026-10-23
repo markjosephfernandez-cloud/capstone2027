@@ -12,13 +12,17 @@ final class VideoMimeType
     public static function detect(string $path): string
     {
         $handle = @fopen($path, 'rb');
-        if ($handle === false) throw new RuntimeException('The video file is unavailable.');
+        if ($handle === false) {
+            throw new RuntimeException('The video file is unavailable.');
+        }
         try {
             $header = fread($handle, self::HEADER_BYTES);
         } finally {
             fclose($handle);
         }
-        if ($header === false || $header === '') throw new RuntimeException('The video file is empty or unreadable.');
+        if ($header === false || $header === '') {
+            throw new RuntimeException('The video file is empty or unreadable.');
+        }
         return (new \finfo(FILEINFO_MIME_TYPE))->buffer($header) ?: 'application/octet-stream';
     }
 }

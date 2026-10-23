@@ -16,7 +16,9 @@ class MobileSearchController extends ApiController
     public function remember()
     {
         $query = mb_substr(trim((string) ($this->input()['query'] ?? '')), 0, 255);
-        if ($query === '') return $this->error('invalid_query', 'Search query cannot be empty.', 422);
+        if ($query === '') {
+            return $this->error('invalid_query', 'Search query cannot be empty.', 422);
+        }
         db_connect()->table('mobile_search_history')->insert(['user_employee_id' => (int) $this->actor()['employee_id'], 'query' => $query, 'searched_at' => Time::now('UTC')->toDateTimeString()]);
         return $this->success(['query' => $query], 201);
     }

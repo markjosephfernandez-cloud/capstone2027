@@ -70,6 +70,60 @@ final class CentralLibraryTest extends CIUnitTestCase
         self::assertSame(2,$this->centralDb->table('server_recent')->countAllResults());
     }
 
+    public function testFileTrashUsesIndexedLookupsAndFolderTrashStillIncludesDescendants(): void
+    {
+        $db = $this->centralDb;
+        $forge = \Config\Database::forge();
+        foreach (['server_library_index', 'server_library_scan_queue'] as $table) {
+            $forge->addField([
+                'source_key' => ['type' => 'VARCHAR', 'constraint' => 64],
+                'path_hash' => ['type' => 'VARCHAR', 'constraint' => 64],
+                'path' => ['type' => 'TEXT'],
+            ]);
+            $forge->createTable($table);
+            $this->fixtureTables[] = $table;
+        }
+        $library = new ServerLibraryService($this->config);
+        $central = new CentralMediaService($library);
+        $editor = new ServerLibraryEditor($library, $this->config);
+        $file = 'Event/Photos/photo.jpg';
+        $identity = $central->identity($file);
+        foreach ([$file, 'Event/Photos/other.jpg', 'Event/Photos-extra/keep.jpg'] as $path) {
+            foreach (['server_library_index', 'server_library_scan_queue'] as $table) {
+                $db->table($table)->insert(['source_key' => $library->catalogSourceKey(), 'path_hash' => hash('sha256', $path), 'path' => $path]);
+            }
+        }
+        $queries = [];
+        $listener = static function ($query) use (&$queries): void { $queries[] = (string) $query; };
+        \CodeIgniter\Events\Events::on('DBQuery', $listener);
+        try {
+            $editor->trash([$file], 12);
+        } finally {
+            \CodeIgniter\Events\Events::removeListener('DBQuery', $listener);
+        }
+        $mediaReads = array_values(array_filter($queries, static fn ($sql) => str_starts_with($sql, 'SELECT') && str_contains($sql, 'server_media') && str_contains($sql, 'LIKE')));
+        self::assertCount(1, $mediaReads);
+        self::assertMatchesRegularExpression('/[\x60"]?id[\x60"]? IN \(/', $mediaReads[0]);
+        $catalogDeletes = array_values(array_filter($queries, static fn ($sql) => str_starts_with($sql, 'DELETE') && str_contains($sql, 'server_library_')));
+        self::assertCount(2, $catalogDeletes);
+        foreach ($catalogDeletes as $sql) {
+            self::assertStringContainsString('path_hash', $sql);
+            self::assertStringNotContainsString('LIKE', $sql);
+        }
+        self::assertSame(1, (int) $db->table('server_media')->where('id', $identity['id'])->get()->getRowArray()['is_deleted']);
+        foreach (['server_library_index', 'server_library_scan_queue'] as $table) {
+            self::assertSame(2, $db->table($table)->countAllResults());
+        }
+        file_put_contents($this->root . '/Event/Photos/other.jpg', 'other image');
+        $other = $central->identity('Event/Photos/other.jpg');
+        $editor->trash(['Event/Photos'], 12);
+        self::assertSame(1, (int) $db->table('server_media')->where('id', $other['id'])->get()->getRowArray()['is_deleted']);
+        foreach (['server_library_index', 'server_library_scan_queue'] as $table) {
+            self::assertSame(['Event/Photos-extra/keep.jpg'], array_column($db->table($table)->get()->getResultArray(), 'path'));
+        }
+        self::assertCount(2, $editor->state()['trash']);
+    }
+
     public function testMetadataWritesUseDatabaseAndPreserveOriginal(): void
     {
         $editor = new ServerLibraryEditor(new ServerLibraryService($this->config),$this->config);
@@ -78,6 +132,76 @@ final class CentralLibraryTest extends CIUnitTestCase
         self::assertSame(1,$this->centralDb->table('server_metadata')->countAllResults());
         self::assertFileDoesNotExist($this->root.'/.greyhound-library/metadata.json');
         self::assertSame('original image',file_get_contents($this->root.'/Event/Photos/photo.jpg'));
+    }
+
+    public function testExternalTrashDeletionRemovesMissingOriginalFromFileAndCatalogListings(): void
+    {
+        $this->distributionFixtures();
+        $forge = \Config\Database::forge();
+        $forge->addField(['source_key'=>['type'=>'TEXT'], 'path'=>['type'=>'TEXT'], 'path_hash'=>['type'=>'TEXT'], 'name'=>['type'=>'TEXT']]);
+        $forge->createTable('server_library_index');
+        $this->fixtureTables[] = 'server_library_index';
+        $library = new ServerLibraryService($this->config);
+        $fileId = (new CentralMediaService($library))->register('Event/Photos/photo.jpg');
+        $this->centralDb->table('server_library_index')->insert([
+            'source_key'=>$library->catalogSourceKey(), 'path'=>'Event/Photos/photo.jpg', 'path_hash'=>hash('sha256', 'Event/Photos/photo.jpg'), 'name'=>'photo.jpg',
+        ]);
+        // Simulate an older Trash item with no surviving manifest.
+        mkdir($this->root . '/TRASH');
+        $stored = str_repeat('a', 32) . '--photo.jpg';
+        rename($this->root . '/Event/Photos/photo.jpg', $this->root . '/TRASH/' . $stored);
+        $queries = [];
+        $listener = static function ($query) use (&$queries): void { $queries[] = (string) $query; };
+        \CodeIgniter\Events\Events::on('DBQuery', $listener);
+        try {
+            (new ServerLibraryEditor($library, $this->config))->permanentlyDelete('external-' . bin2hex($stored));
+        } finally {
+            \CodeIgniter\Events\Events::removeListener('DBQuery', $listener);
+        }
+        $lookups = array_values(array_filter($queries, static fn ($sql) =>
+            (str_starts_with($sql, 'SELECT') && str_contains($sql, 'server_media'))
+            || (str_starts_with($sql, 'DELETE') && str_contains($sql, 'server_library_index'))));
+        self::assertCount(2, $lookups);
+        foreach ($lookups as $sql) {
+            self::assertStringContainsString('path_hash', $sql);
+            self::assertStringNotContainsString('LIKE', $sql);
+        }
+        self::assertFileDoesNotExist($this->root . '/TRASH/' . $stored);
+        self::assertSame(1, (int) $this->centralDb->table('files')->where('id', $fileId)->get()->getRowArray()['is_deleted']);
+        self::assertSame(1, (int) $this->centralDb->table('server_media')->where('file_id', $fileId)->get()->getRowArray()['is_deleted']);
+        self::assertSame(0, $this->centralDb->table('server_library_index')->countAllResults());
+    }
+
+    public function testFolderReconciliationStillDeletesDescendantsAndKeepsAdjacentPaths(): void
+    {
+        $library = new ServerLibraryService($this->config);
+        $central = new CentralMediaService($library);
+        $child = $central->identity('Event/Photos/photo.jpg');
+        $adjacent = $central->identity('Event/Photos-extra/keep.jpg');
+        unlink($this->root . '/Event/Photos/photo.jpg');
+        rmdir($this->root . '/Event/Photos');
+        $reconciler = new \App\Services\ServerTrashReconciler($library);
+        self::assertSame(['Event/Photos'], $reconciler->reconcile(['path'=>'Event/Photos', 'directory'=>true]));
+        self::assertSame(1, (int) $this->centralDb->table('server_media')->where('id', $child['id'])->get()->getRowArray()['is_deleted']);
+        self::assertSame(0, (int) $this->centralDb->table('server_media')->where('id', $adjacent['id'])->get()->getRowArray()['is_deleted']);
+    }
+
+    public function testTrashReconciliationPreservesLiveCopiesAndAmbiguousNames(): void
+    {
+        $this->distributionFixtures();
+        $library = new ServerLibraryService($this->config);
+        $central = new CentralMediaService($library);
+        $first = $central->register('Event/Photos/photo.jpg');
+        $reconciler = new \App\Services\ServerTrashReconciler($library);
+        $record = ['original_unknown'=>true, 'stored_name'=>str_repeat('a', 32) . '--photo.jpg'];
+        self::assertSame([], $reconciler->reconcile($record));
+        file_put_contents($this->root . '/Event/photo.jpg', 'another copy');
+        $second = $central->register('Event/photo.jpg');
+        unlink($this->root . '/Event/Photos/photo.jpg');
+        self::assertSame([], $reconciler->reconcile($record));
+        self::assertSame(2, $this->centralDb->table('files')->whereIn('id', [$first, $second])->where('is_deleted', 0)->countAllResults());
+        self::assertSame('another copy', file_get_contents($this->root . '/Event/photo.jpg'));
+        self::assertSame([], $reconciler->reconcile(['path'=>'Unavailable/photo.jpg']));
     }
 
     public function testStorageAliasResolvesOriginalAndRejectsTraversal(): void

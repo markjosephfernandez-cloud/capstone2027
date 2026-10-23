@@ -23,6 +23,13 @@ $areaPoints = $trendPoints === [] ? '' : $chartLeft . ',' . $chartBottom . ' ' .
 $labelIndexes = [0, 7, 14, 21, 29];
 ?>
 <style>
+    .storage-analytics-table { max-height: 360px; overflow: auto; }
+    .storage-analytics-table:focus-visible { outline: 2px solid #4154f1; outline-offset: 2px; }
+    .storage-analytics-table table { margin-bottom: 0; }
+    .storage-analytics-table th, .storage-analytics-table td { padding: .65rem .75rem; }
+    .storage-analytics-table th:not(:first-child), .storage-analytics-table td:not(:first-child) { text-align: right; white-space: nowrap; }
+    .storage-analytics-table thead th { position: sticky; top: 0; z-index: 1; background: #f6f9ff; }
+    .storage-analytics-table tfoot th { position: sticky; bottom: 0; z-index: 1; background: #f6f9ff; box-shadow: 0 -1px 0 #e6e9ef; }
     .upload-trend-chart { min-height: 300px; overflow-x: auto; }
     .upload-trend-chart svg { display: block; height: auto; min-width: 620px; width: 100%; }
     .upload-trend-grid { stroke: #e6e9ef; stroke-width: 1; }
@@ -80,7 +87,24 @@ $labelIndexes = [0, 7, 14, 21, 29];
                     </div>
                 <?php endif; ?>
             </div></div></div>
-            <div class="col-12"><div class="card"><div class="card-body"><h5 class="card-title">Storage Analytics</h5><div class="table-responsive"><table class="table table-borderless"><thead><tr><th>FILE TYPE</th><th>FILES</th><th>TOTAL SIZE</th></tr></thead><tbody><?php foreach ($categories as $category): ?><tr><td><?= esc($category['filetype'] ?: 'Unknown') ?></td><td><?= esc(number_format((int) $category['file_count'])) ?></td><td><?= esc(format_bytes((int) $category['total_size'])) ?></td></tr><?php endforeach; ?><?php if ($categories === []): ?><tr><td colspan="3" class="text-muted">No file data is available.</td></tr><?php endif; ?></tbody></table></div></div></div></div>
+            <div class="col-12">
+                <div class="card"><div class="card-body">
+                    <h5 class="card-title mb-1" id="storage-analytics-title">Storage Analytics</h5>
+                    <p class="text-muted small mb-3">All file types, sorted by storage used. Scroll to view more.</p>
+                    <div class="table-responsive storage-analytics-table" role="region" aria-labelledby="storage-analytics-title" tabindex="0">
+                        <table class="table table-borderless">
+                            <thead><tr><th scope="col">FILE TYPE</th><th scope="col">FILES</th><th scope="col">TOTAL SIZE</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($categories as $category): ?>
+                                    <tr><td><?= esc($category['filetype'] ?: 'Unknown') ?></td><td><?= esc(number_format((int) $category['file_count'])) ?></td><td><?= esc(format_bytes((int) $category['total_size'])) ?></td></tr>
+                                <?php endforeach; ?>
+                                <?php if ($categories === []): ?><tr><td colspan="3" class="text-muted">No file data is available.</td></tr><?php endif; ?>
+                            </tbody>
+                            <tfoot><tr><th scope="row">Total</th><th><?= esc(number_format($stats['total_files'])) ?></th><th><?= esc(format_bytes((int) $stats['total_bytes'])) ?></th></tr></tfoot>
+                        </table>
+                    </div>
+                </div></div>
+            </div>
             <?php if ($isAdmin): ?><div class="col-12"><div class="card"><div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-3"><div><h5 class="card-title mb-1">Administration</h5><p class="text-muted mb-0">Manage team access and review protected system activity.</p></div><a class="btn btn-primary" href="<?= esc(site_url('admin/control-center')) ?>"><i class="bi bi-shield-lock me-1"></i> Open Control Center</a></div></div></div><?php endif; ?>
         </div></div>
         <div class="col-lg-4">

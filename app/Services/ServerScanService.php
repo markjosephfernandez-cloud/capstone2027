@@ -23,14 +23,16 @@ class ServerScanService
     }
 
     /** @return array<string, mixed> */
-    public function begin(int $employeeId, ?array $selectedPaths = null, ?array $scanModes = null, string $previousJobId = ''): array
+    public function begin(int $employeeId, ?array $selectedPaths = null, ?array $scanModes = null, string $previousJobId = '', int $selectionTotal = 0): array
     {
         if ($employeeId < 1) {
             throw new RuntimeException('A valid user is required to start a server scan.');
         }
 
         $previous = [];
-        if ($scanModes !== null) $scanModes = SelectedImageScan::validateModes($scanModes);
+        if ($scanModes !== null) {
+            $scanModes = SelectedImageScan::validateModes($scanModes);
+        }
         if ($previousJobId !== '') {
             $previous = $this->loadState($previousJobId);
             if ((int) $previous['employee_id'] !== $employeeId || empty($previous['complete']) || ($previous['scan_modes'] ?? null) !== $scanModes) {
@@ -45,6 +47,9 @@ class ServerScanService
             'job_id'                => $jobId,
             'scan_modes'            => $scanModes,
             'selection_entries'     => $previous['selection_entries'] ?? [],
+            'audit_id'              => $previous['audit_id'] ?? null,
+            'audit_results'         => $previous['audit_results'] ?? [],
+            'audit_total'           => max(count($files), (int) ($previous['audit_total'] ?? $selectionTotal)),
             'employee_id'           => $employeeId,
             'source_root'           => $sourceRoot,
             'files'                 => $files,
@@ -68,7 +73,9 @@ class ServerScanService
     {
         $root = $this->sourceRoot(true);
         $directory = $folder === '' ? $root : $this->resolveSelectionPath($root, $folder);
-        if (!is_dir($directory)) throw new RuntimeException('This folder is unavailable.');
+        if (! is_dir($directory)) {
+            throw new RuntimeException('This folder is unavailable.');
+        }
         $items = [];
         $deadline = microtime(true) + 8;
         foreach (new FilesystemIterator($directory, FilesystemIterator::SKIP_DOTS) as $item) {
@@ -76,9 +83,15 @@ class ServerScanService
                 throw new RuntimeException('This folder is too large to browse. Narrow the configured scan source.');
             }
             $path = ltrim($folder . '/' . $item->getFilename(), '/');
-            if ($item->isLink() || $this->shouldIgnoreSourcePath($path) || !$item->isReadable()) continue;
-            if ($query !== '' && mb_stripos($item->getFilename(), $query) === false) continue;
-            if (!$item->isDir() && !in_array(strtolower($item->getExtension()), ['jpg','jpeg','png','gif','webp'], true)) continue;
+            if ($item->isLink() || $this->shouldIgnoreSourcePath($path) || ! $item->isReadable()) {
+                continue;
+            }
+            if ($query !== '' && mb_stripos($item->getFilename(), $query) === false) {
+                continue;
+            }
+            if (! $item->isDir() && ! in_array(strtolower($item->getExtension()), ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+                continue;
+            }
             $items[] = ['path'=>$path, 'name'=>$item->getFilename(), 'directory'=>$item->isDir()];
         }
         usort($items, static fn ($a, $b) => ($b['directory'] <=> $a['directory']) ?: strnatcasecmp($a['name'], $b['name']));
@@ -102,12 +115,18 @@ class ServerScanService
         $cursor = $root;
         foreach (explode('/', $path) as $part) {
             $cursor .= DIRECTORY_SEPARATOR . $part;
-            if (is_link($cursor)) throw new RuntimeException('Linked files cannot be scanned.');
+            if (is_link($cursor)) {
+                throw new RuntimeException('Linked files cannot be scanned.');
+            }
         }
         $resolved = realpath($cursor);
-        if ($resolved === false || !$this->isWithin($resolved, $root) || !is_readable($resolved)) throw new RuntimeException('A selected file or folder is unavailable.');
+        if ($resolved === false || ! $this->isWithin($resolved, $root) || ! is_readable($resolved)) {
+            throw new RuntimeException('A selected file or folder is unavailable.');
+        }
         $trash = $this->storage()->root() . DIRECTORY_SEPARATOR . 'Trashed';
-        if ($this->isWithin($resolved, $trash)) throw new RuntimeException('Trashed files cannot be scanned.');
+        if ($this->isWithin($resolved, $trash)) {
+            throw new RuntimeException('Trashed files cannot be scanned.');
+        }
         return $resolved;
     }
 
@@ -119,8 +138,12 @@ class ServerScanService
         $paths = array_values(array_unique($paths));
         foreach ($paths as $path) {
             $source = $this->resolveSelectionPath($root, $path);
-            if (!is_file($source) || !in_array(mime_content_type($source), ['image/jpeg','image/png','image/gif','image/webp'], true)) throw new RuntimeException('Select supported image files for AI scanning.');
-            if ($this->config->maxUploadBytes() > 0 && filesize($source) > $this->config->maxUploadBytes()) throw new RuntimeException('A selected image exceeds the file size limit.');
+            if (! is_file($source) || ! in_array(mime_content_type($source), ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
+                throw new RuntimeException('Select supported image files for AI scanning.');
+            }
+            if ($this->config->maxUploadBytes() > 0 && filesize($source) > $this->config->maxUploadBytes()) {
+                throw new RuntimeException('A selected image exceeds the file size limit.');
+            }
         }
         return $paths;
     }
@@ -128,7 +151,9 @@ class ServerScanService
     /** Resolve/register a selected server image for metadata extraction without running AI. */
     public function passportFile(string $path, int $employeeId): int
     {
-        if ($employeeId < 1) throw new RuntimeException('A valid administrator is required.');
+        if ($employeeId < 1) {
+            throw new RuntimeException('A valid administrator is required.');
+        }
         $root = $this->sourceRoot(false);
         $this->validateSelection($root, [$path]);
         $result = $this->importFile($root, $path, bin2hex(random_bytes(16)), $employeeId, false);
@@ -136,17 +161,21 @@ class ServerScanService
     }
 
     /** @return array<string, mixed> */
-    public function processNext(string $jobId, int $employeeId): array
+    public function processNext(string $jobId, int $employeeId, ?array $actor = null): array
     {
         $lock = fopen($this->jobPath($jobId) . '.lock', 'c');
-        if (!$lock) throw new RuntimeException('Scan lock unavailable.');
+        if (! $lock) {
+            throw new RuntimeException('Scan lock unavailable.');
+        }
         try {
-            if (!flock($lock, LOCK_EX | LOCK_NB)) throw new RuntimeException('This scan is already processing an image.');
-            return $this->processLocked($jobId, $employeeId);
+            if (! flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new RuntimeException('This scan is already processing an image.');
+            }
+            return $this->processLocked($jobId, $employeeId, $actor);
         } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
 
-    private function processLocked(string $jobId, int $employeeId): array
+    private function processLocked(string $jobId, int $employeeId, ?array $actor): array
     {
         $state = $this->loadState($jobId);
         if ((int) ($state['employee_id'] ?? 0) !== $employeeId) {
@@ -183,6 +212,11 @@ class ServerScanService
             if (count($state['errors']) < 10) {
                 $state['errors'][] = $message;
             }
+        }
+
+        $state['audit_results'][] = ['path' => $relativePath, 'status' => $status ?? 'failed', 'message' => $message];
+        if ($actor !== null) {
+            $state['audit_id'] = service('audit')->recordServerScan($actor, $state['audit_id'] ?? null, $state['audit_results'], (int) ($state['audit_total'] ?? $state['total']));
         }
 
         ++$state['processed'];
@@ -302,7 +336,9 @@ class ServerScanService
 
     private function shouldIgnoreSourcePath(string $relativePath): bool
     {
-        if ($this->config->centralized() && preg_match('#^(DEPARTMENT|TRASH)(/|$)#i', $relativePath)) return true;
+        if ($this->config->centralized() && preg_match('#^(DEPARTMENT|TRASH)(/|$)#i', $relativePath)) {
+            return true;
+        }
         $segments = explode('/', str_replace('\\', '/', $relativePath));
         foreach ($segments as $segment) {
             if ($segment === '' || str_starts_with($segment, '.')) {
@@ -341,10 +377,14 @@ class ServerScanService
             $source = $library->resolve($relativePath);
             $central = new CentralMediaService($library);
             $id = $central->register($relativePath, ['employee_id'=>$employeeId], ['server_path'=>$relativePath,'size'=>filesize($source)]);
-            if (!$analyze) return ['status'=>'imported', 'file_id'=>$id, 'message'=>'Image registered for metadata scanning.'];
+            if (! $analyze) {
+                return ['status' => 'imported', 'file_id' => $id, 'message' => 'Image registered for metadata scanning.'];
+            }
             db_connect()->table('files')->where('id',$id)->update(['content_hash'=>hash_file('sha256',$source),'scan_id'=>$jobId]);
             $queued = (new IFoundAnalysisQueue())->enqueue([$id]);
-            if (!$queued['queued']) return ['status'=>'skipped','file_id'=>$id,'message'=>basename($relativePath).' already analyzed; existing results were preserved.'];
+            if (! $queued['queued']) {
+                return ['status' => 'skipped', 'file_id' => $id, 'message' => basename($relativePath) . ' already analyzed; existing results were preserved.'];
+            }
             return ['status'=>'imported','file_id'=>$id,'message'=>basename($relativePath).' queued for analysis.'];
         }
         $source = realpath($sourceRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath));
@@ -428,7 +468,9 @@ class ServerScanService
             if ($file === null) {
                 throw new RuntimeException('The scanned file could not be loaded for iFound processing.');
             }
-            if ($analyze) service('eventDetection')->classifyAndStore($file);
+            if ($analyze) {
+                service('eventDetection')->classifyAndStore($file);
+            }
 
             $db->transCommit();
         } catch (Throwable $exception) {
@@ -552,7 +594,10 @@ class ServerScanService
         return $directory . DIRECTORY_SEPARATOR . $jobId . '.json';
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function publicState(array $state, string $message): array
     {
         $total = (int) ($state['total'] ?? 0);

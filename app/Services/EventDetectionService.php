@@ -17,7 +17,10 @@ class EventDetectionService
     {
     }
 
-    /** @param array<string, mixed> $file @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $file
+     * @return array<string, mixed>
+     */
     public function classifyAndStore(array $file, bool $requireTrainedModel = false): array
     {
         $started = hrtime(true);
@@ -101,7 +104,12 @@ class EventDetectionService
         $event = $remote['event_name'] ?? null;
         if ($remote === null) {
             foreach ($this->config->eventKeywords as $name=>$keywords) {
-                foreach ($keywords as $keyword) if (str_contains(mb_strtolower($filename . ' ' . $folder), mb_strtolower($keyword))) { $event = $name; break 2; }
+                foreach ($keywords as $keyword) {
+                    if (str_contains(mb_strtolower($filename . ' ' . $folder), mb_strtolower($keyword))) {
+                        $event = $name;
+                        break 2;
+                    }
+                }
             }
         }
         $confidence = $remote['confidence_score'] ?? 0.0;
@@ -131,7 +139,10 @@ class EventDetectionService
         return implode(', ', array_slice(array_values(array_unique($tags)), 0, 30));
     }
 
-    /** @param array<string, mixed> $file @return list<string> */
+    /**
+     * @param array<string, mixed> $file
+     * @return list<string>
+     */
     private function automaticTags(array $file, ?string $event): array
     {
         $extension = strtoupper((string) pathinfo((string) ($file['filename'] ?? ''), PATHINFO_EXTENSION));
@@ -169,7 +180,10 @@ class EventDetectionService
         };
     }
 
-    /** @param array<string, mixed> $file @param list<string> $tags */
+    /**
+     * @param array<string, mixed> $file
+     * @param list<string> $tags
+     */
     private function storeTagRecords(array $file, array $tags): void
     {
         $fileId = (int) ($file['id'] ?? 0);
@@ -200,7 +214,10 @@ class EventDetectionService
         };
     }
 
-    /** @param array<string, mixed> $file @return array<string, mixed>|null */
+    /**
+     * @param array<string, mixed> $file
+     * @return array<string, mixed>|null
+     */
     private function trainedModelResult(array $file, ?string $physicalPath = null): ?array
     {
         $endpoint = $this->config->eventModelEndpoint();

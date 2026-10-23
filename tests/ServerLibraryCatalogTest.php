@@ -46,6 +46,37 @@ final class ServerLibraryCatalogTest extends CIUnitTestCase
         parent::tearDown();
     }
 
+    public function testStorageAnalyticsCountsAllVisibleFilesAcrossFoldersAndTypes(): void
+    {
+        $config = new class($this->root) extends Storage {
+            public function __construct(private string $source) { parent::__construct(); }
+            public function scanSourceRoot(): string { return $this->source; }
+            public function centralized(): bool { return true; }
+        };
+        $catalog = new ServerLibraryCatalog($config, $this->catalogDb);
+        $this->assertSame(['active_files' => 0, 'total_bytes' => 0, 'categories' => []], $catalog->storageAnalytics());
+        (new ServerLibraryIndexer($this->catalogDb, $this->config))->run();
+        $template = $this->catalogDb->table('server_library_index')->where('name', 'photo.jpg')->get()->getRowArray();
+        unset($template['id']);
+        // Include more than six types and nested files without relying on NAS reads.
+        foreach (['a.png', 'nested/b.mov', 'c.pdf', 'd.txt', 'e.mp4', 'f.wav', 'g.zip',
+            'TRASH/hidden.jpg', 'DEPARTMENT/hidden.jpg', "nested/Icon\r",
+            'Edit.fcpbundle/Event/Render Files/cache.jpg', 'another-source.jpg'] as $path) {
+            $row = array_replace($template, [
+                'path' => $path, 'path_hash' => hash('sha256', $path),
+                'name' => basename($path), 'extension' => pathinfo($path, PATHINFO_EXTENSION), 'size' => 10,
+            ]);
+            if ($path === 'another-source.jpg') $row['source_key'] = hash('sha256', 'another-source');
+            $this->catalogDb->table('server_library_index')->insert($row);
+        }
+        $analytics = $catalog->storageAnalytics();
+        $this->assertSame(8, $analytics['active_files']);
+        $this->assertSame(77, $analytics['total_bytes']);
+        $this->assertCount(8, $analytics['categories']);
+        $this->assertSame(8, (int) array_sum(array_column($analytics['categories'], 'file_count')));
+        $this->assertSame(77, (int) array_sum(array_column($analytics['categories'], 'total_size')));
+    }
+
     public function testMoveImmediatelyUpdatesBothParentListingsAndNestedPaths(): void
     {
         mkdir($this->root . '/Destination');

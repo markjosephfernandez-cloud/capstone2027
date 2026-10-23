@@ -22,7 +22,9 @@ class ServerLibraryService
         return $this;
     }
 
-    public function __construct(private readonly Storage $config = new Storage(), private readonly ?CacheInterface $countCache = null) {}
+    public function __construct(private readonly Storage $config = new Storage(), private readonly ?CacheInterface $countCache = null)
+    {
+    }
 
     public static function isMetadataName(string $name): bool
     {
@@ -48,18 +50,24 @@ class ServerLibraryService
 
     public function relative(string $path): string
     {
-        if ($this->config->centralized() && preg_match('#^DEPARTMENT(?:/|$)#i', $path)) throw new RuntimeException('Department storage is separate from source media.');
+        if ($this->config->centralized() && preg_match('#^DEPARTMENT(?:/|$)#i', $path)) {
+            throw new RuntimeException('Department storage is separate from source media.');
+        }
         if (strlen($path) > 4000 || str_contains($path, "\0") || str_contains($path, '\\') || str_starts_with($path, '/') || preg_match('/^[A-Za-z]:/', $path)) {
             throw new RuntimeException('Invalid server path.');
         }
-        if ($path === '') return '';
+        if ($path === '') {
+            return '';
+        }
         // Keep Original Media accessible, but do not browse or index editor caches.
         foreach (self::FINAL_CUT_CACHE_FOLDERS as $cacheFolder) {
             if (preg_match('#\.fcpbundle/(?:.*/)?' . preg_quote($cacheFolder, '#') . '(?:/|$)#i', $path)) {
                 throw new RuntimeException('Editing cache files are not library media.');
             }
         }
-        if (strcasecmp(explode('/', $path)[0], 'TRASH') === 0) throw new RuntimeException('Open the Trash page to manage server Trash.');
+        if (strcasecmp(explode('/', $path)[0], 'TRASH') === 0) {
+            throw new RuntimeException('Open the Trash page to manage server Trash.');
+        }
         foreach (explode('/', $path) as $part) {
             if ($part === '' || $part === '.' || $part === '..' || str_starts_with($part, '.') || $part === '__MACOSX' || $part === "Icon\r") {
                 throw new RuntimeException('Invalid server path.');
@@ -89,7 +97,9 @@ class ServerLibraryService
         $candidate = $root;
         foreach ($relative === '' ? [] : explode('/', $relative) as $part) {
             $candidate .= DIRECTORY_SEPARATOR . $part;
-            if (is_link($candidate)) throw new RuntimeException('Linked server paths are unavailable.');
+            if (is_link($candidate)) {
+                throw new RuntimeException('Linked server paths are unavailable.');
+            }
         }
         $path = realpath($candidate);
         if ($path === false || ($path !== $root && !str_starts_with($path, $root . DIRECTORY_SEPARATOR))
@@ -107,7 +117,9 @@ class ServerLibraryService
 
     public function suggestions(string $folder, string $query, string $type = '', ?callable $continueReading = null): array
     {
-        if (mb_strlen(trim($query)) < 2) return [];
+        if (mb_strlen(trim($query)) < 2) {
+            return [];
+        }
         $listing = $this->browse($folder, $query, 0, $continueReading, $type, 1);
         return $this->suggestionsFromItems($listing['items'], $query);
     }
@@ -120,10 +132,14 @@ class ServerLibraryService
                 ? ($item['directory'] ? [$item['name']] : $item['tags'])
                 : array_merge([$item['name']], $item['tags'], [$item['classification'], $item['date_taken']]);
             foreach ($values as $value) {
-                if (mb_stripos($value, $query) === false || isset($seen[mb_strtolower($value)])) continue;
+                if (mb_stripos($value, $query) === false || isset($seen[mb_strtolower($value)])) {
+                    continue;
+                }
                 $seen[mb_strtolower($value)] = true;
                 $suggestions[] = ['value'=>$value, 'kind'=>$this->taggedImageSearch ? ($item['directory'] ? 'Folder' : 'Tag') : ($value === $item['name'] ? ($item['directory'] ? 'Folder' : 'File') : 'Tag')];
-                if (count($suggestions) >= 8) break 2;
+                if (count($suggestions) >= 8) {
+                    break 2;
+                }
             }
         }
         return $suggestions;
@@ -143,42 +159,68 @@ class ServerLibraryService
         $index = $recursive ? (new ServerLibrarySearchIndex($this, $this->countCache ?? cache()))->read($continueReading) : null;
         $entries = $recursive ? $index['entries'] : $this->entries($folder, false, $continueReading);
         foreach ($entries as $relative => $path) {
-            try { $this->relative($relative); } catch (RuntimeException) { continue; }
+            try {
+                $this->relative($relative);
+            } catch (RuntimeException) {
+                continue;
+            }
             $name = basename($relative);
             $itemTags = $tags[$relative] ?? [];
             
-            if (!$recursive && is_link($path)) continue;
+            if (! $recursive && is_link($path)) {
+                continue;
+            }
             $isDirectory = $recursive ? $path['directory'] : is_dir($path);
-            if (!$recursive && !$isDirectory && !is_file($path)) continue;
+            if (! $recursive && ! $isDirectory && ! is_file($path)) {
+                continue;
+            }
             $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-            if (!$isDirectory && $imagesOnly && !in_array($extension, ['jpg','jpeg','png','webp'], true)) continue;
-            if (!$isDirectory && $extension !== '') $fileTypes[$extension] = strtoupper($extension);
-            if (!$isDirectory && $type !== '' && $extension !== strtolower($type)) continue;
+            if (! $isDirectory && $imagesOnly && ! in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                continue;
+            }
+            if (! $isDirectory && $extension !== '') {
+                $fileTypes[$extension] = strtoupper($extension);
+            }
+            if (! $isDirectory && $type !== '' && $extension !== strtolower($type)) {
+                continue;
+            }
             $passport = $state['media'][$relative]['passport'] ?? [];
             $searchText = implode(' ', [$relative, implode(', ', $itemTags), $passport['classification'] ?? $passport['event_name'] ?? '', $passport['date_taken'] ?? '']);
             if ($this->taggedImageSearch && $search !== '') {
-                if (!$isDirectory && (!in_array($extension, CameraImagePreviewService::IMAGE_EXTENSIONS, true) || $itemTags === [])) continue;
+                if (! $isDirectory && (! in_array($extension, CameraImagePreviewService::IMAGE_EXTENSIONS, true) || $itemTags === [])) {
+                    continue;
+                }
                 $searchText = $isDirectory ? $name : implode(', ', $itemTags);
             }
-            if ($search !== '' && mb_stripos($searchText, $search) === false) continue;
+            if ($search !== '' && mb_stripos($searchText, $search) === false) {
+                continue;
+            }
             $kind = $isDirectory ? 'folder' : $this->fileKind($name);
             $items[] = ['name'=>$name, 'path'=>$relative, 'directory'=>$isDirectory, 'kind'=>$kind, 'tags'=>$itemTags, 'extension'=>$extension, 'size'=>$recursive ? $path['size'] : ($isDirectory ? null : @filesize($path)), 'modified_at'=>$recursive ? $path['modified_at'] : @filemtime($path), 'uploaded_at'=>$state['media'][$relative]['uploaded_at'] ?? null, 'has_passport'=>!empty($passport), 'classification'=>$passport['classification'] ?? $passport['event_name'] ?? '', 'date_taken'=>$passport['date_taken'] ?? ''];
         }
-        if (!$recursive) $this->checkRead($continueReading);
+        if (! $recursive) {
+            $this->checkRead($continueReading);
+        }
         usort($items, static fn ($a, $b) => ($b['directory'] <=> $a['directory']) ?: strnatcasecmp($a['name'], $b['name']) ?: strcmp($a['name'], $b['name']));
         $folders = array_values(array_filter($items, static fn ($item) => $item['directory']));
         $files = array_values(array_filter($items, static fn ($item) => !$item['directory']));
-        if ($page !== null) usort($files, static fn ($a, $b) => (strtotime($b['uploaded_at'] ?? '') ?: $b['modified_at']) <=> (strtotime($a['uploaded_at'] ?? '') ?: $a['modified_at']) ?: strcmp($b['path'], $a['path']));
+        if ($page !== null) {
+            usort($files, static fn($a, $b) => (strtotime($b['uploaded_at'] ?? '') ?: $b['modified_at']) <=> (strtotime($a['uploaded_at'] ?? '') ?: $a['modified_at']) ?: strcmp($b['path'], $a['path']));
+        }
         $total = count($files);
         $offset = max(0, $offset);
         $pageSize = $page === null ? self::FILE_BATCH_SIZE : 20;
         $totalPages = max(1, (int) ceil($total / $pageSize));
         $currentPage = $page === null ? 1 : min(max(1, $page), $totalPages);
-        if ($page !== null) $offset = ($currentPage - 1) * $pageSize;
+        if ($page !== null) {
+            $offset = ($currentPage - 1) * $pageSize;
+        }
         $batch = array_slice($files, $offset, $pageSize);
         $items = array_merge($offset === 0 || $page !== null ? $folders : [], $batch);
         foreach ($items as &$item) {
-            if ($recursive) continue;
+            if ($recursive) {
+                continue;
+            }
             $this->checkRead($continueReading);
             if ($item['directory']) {
                 $modified = @filemtime($this->resolve($item['path'], true));
@@ -188,7 +230,9 @@ class ServerLibraryService
         unset($item);
         // Do not display a stale listing if the share disappeared during enumeration.
         $this->root();
-        if (!$recursive) $this->checkRead($continueReading);
+        if (! $recursive) {
+            $this->checkRead($continueReading);
+        }
         $next = $offset + count($batch);
         ksort($fileTypes);
         return ['pagination'=>['current_page'=>$currentPage, 'total_pages'=>$totalPages, 'per_page'=>$pageSize, 'total_results'=>$total, 'from'=>$total === 0 ? 0 : $offset + 1, 'to'=>min($offset + $pageSize, $total)], 'fileTypes'=>$fileTypes, 'items'=>$items, 'file_total'=>$total, 'next_offset'=>$next < $total ? $next : null,
@@ -200,19 +244,31 @@ class ServerLibraryService
     {
         $directory = $this->resolve($folder, true);
         $handle = @opendir($directory);
-        if ($handle === false) throw new RuntimeException('This server folder cannot be read.');
+        if ($handle === false) {
+            throw new RuntimeException('This server folder cannot be read.');
+        }
         try {
             while (true) {
                 $this->checkRead($continueReading);
                 $name = readdir($handle);
-                if ($name === false) break;
-                if (self::isMetadataName($name)) continue;
+                if ($name === false) {
+                    break;
+                }
+                if (self::isMetadataName($name)) {
+                    continue;
+                }
                 $relative = ($folder === '' ? '' : $folder . '/') . $name;
                 $path = $directory . DIRECTORY_SEPARATOR . $name;
-                if (!$this->isBrowsableEntry($relative, $path)) continue;
-                if (!is_dir($path) && !is_file($path)) continue;
+                if (! $this->isBrowsableEntry($relative, $path)) {
+                    continue;
+                }
+                if (! is_dir($path) && ! is_file($path)) {
+                    continue;
+                }
                 yield $relative => $path;
-                if ($recursive && is_dir($path)) yield from $this->entries($relative, true, $continueReading);
+                if ($recursive && is_dir($path)) {
+                    yield from $this->entries($relative, true, $continueReading);
+                }
             }
         } finally { closedir($handle); }
     }
@@ -222,13 +278,19 @@ class ServerLibraryService
     {
         $directory = $this->resolve($folder, true);
         $handle = @opendir($directory);
-        if ($handle === false) throw new RuntimeException('This server folder cannot be read.');
+        if ($handle === false) {
+            throw new RuntimeException('This server folder cannot be read.');
+        }
         try {
             while (($name = readdir($handle)) !== false) {
-                if (self::isMetadataName($name)) continue;
+                if (self::isMetadataName($name)) {
+                    continue;
+                }
                 $path = $directory . '/' . $name;
                 $relative = ($folder === '' ? '' : $folder . '/') . $name;
-                if (!$this->isBrowsableEntry($relative, $path)) continue;
+                if (! $this->isBrowsableEntry($relative, $path)) {
+                    continue;
+                }
                 if (is_dir($path)) yield from $this->walkFiles($relative);
                 elseif (is_file($path)) yield $relative => $this->resolve($relative);
             }
@@ -260,19 +322,29 @@ class ServerLibraryService
         $cache = $this->countCache ?? cache();
         $key = 'server_folder_counts_' . hash('sha256', $directory);
         $cached = $cache->get($key);
-        if (is_array($cached)) return $cached;
+        if (is_array($cached)) {
+            return $cached;
+        }
         $handle = @opendir($directory);
-        if ($handle === false) throw new RuntimeException('This server folder cannot be read.');
+        if ($handle === false) {
+            throw new RuntimeException('This server folder cannot be read.');
+        }
         $counts = ['files'=>0, 'folders'=>0];
         try {
             while (true) {
                 $this->checkRead($continueReading);
                 $name = readdir($handle);
-                if ($name === false) break;
-                if (self::isMetadataName($name)) continue;
+                if ($name === false) {
+                    break;
+                }
+                if (self::isMetadataName($name)) {
+                    continue;
+                }
                 $path = $directory . DIRECTORY_SEPARATOR . $name;
                 $child = ($relative === '' ? '' : $relative . '/') . $name;
-                if (!$this->isBrowsableEntry($child, $path)) continue;
+                if (! $this->isBrowsableEntry($child, $path)) {
+                    continue;
+                }
                 if (is_dir($path)) $counts['folders']++;
                 elseif (is_file($path)) $counts['files']++;
             }

@@ -55,20 +55,27 @@ class DashboardController extends BaseController
         $actor = session()->get();
         $departmentUser = RolePolicy::role($actor) === 'department';
         $fileTable = $departmentUser ? 'department_files' : 'files';
-        $visible = $db->table($fileTable)->where('is_deleted', 0);
-        if ($departmentUser) $visible->where('department', (string)($actor['department'] ?? ''));
-        $activeFiles = (int) $visible->countAllResults();
-        $visible = $db->table($fileTable)->where('is_deleted', 0);
-        if ($departmentUser) $visible->where('department', (string)($actor['department'] ?? ''));
-        $totalBytes = (int) ($visible->selectSum('size')->get()->getRowArray()['size'] ?? 0);
+        $storageConfig = new \Config\Storage();
+        if ($storageConfig->centralized() && RolePolicy::allows($actor, 'files.view_all')) {
+            // Match File Manager's source and exclusions; do not add legacy rows
+            // that may represent the very same files in the server catalog.
+            $analytics = (new \App\Services\ServerLibraryCatalog($storageConfig, $db))->storageAnalytics();
+            $categories = $analytics['categories'];
+            $activeFiles = $analytics['active_files'];
+            $totalBytes = $analytics['total_bytes'];
+        } else {
+            $categoriesBuilder = $db->table($fileTable)
+                ->select('filetype, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_size')
+                ->where('is_deleted', 0);
+            if ($departmentUser) {
+                $categoriesBuilder->where('department', (string) ($actor['department'] ?? ''));
+            }
+            $categories = $categoriesBuilder->groupBy('filetype')
+                ->orderBy('total_size', 'DESC')->orderBy('filetype')->get()->getResultArray();
+            $activeFiles = (int) array_sum(array_column($categories, 'file_count'));
+            $totalBytes = (int) array_sum(array_column($categories, 'total_size'));
+        }
         $totalFiles = $activeFiles;
-        $categoriesBuilder = $db->table($fileTable)->select('filetype, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_size')->where('is_deleted', 0);
-        if ($departmentUser) $categoriesBuilder->where('department', (string)($actor['department'] ?? ''));
-        $categories = $categoriesBuilder->groupBy('filetype')
-            ->orderBy('total_size', 'DESC')
-            ->limit(6)
-            ->get()
-            ->getResultArray();
         $trendStart = new \DateTimeImmutable('today', new \DateTimeZone('UTC'));
         $trendStart = $trendStart->modify('-29 days');
         $uploadTrendBuilder = $db->table($fileTable)

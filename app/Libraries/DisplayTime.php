@@ -7,8 +7,12 @@ final class DisplayTime
 {
     public static function format(string|int|null $value, string $format = 'M d, Y g:i A', string $fallback = '—'): string
     {
-        if (is_string($value)) $value = trim($value);
-        if ($value === null || $value === '' || $value === 'Unknown' || $value === '0000-00-00 00:00:00') return $fallback;
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+        if ($value === null || $value === '' || $value === 'Unknown' || $value === '0000-00-00 00:00:00') {
+            return $fallback;
+        }
         try {
             $date = is_int($value)
                 ? new \DateTimeImmutable('@' . $value)

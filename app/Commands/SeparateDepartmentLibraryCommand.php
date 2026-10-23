@@ -16,11 +16,16 @@ class SeparateDepartmentLibraryCommand extends BaseCommand
             CLI::error('Run the independent department library migration first.'); return EXIT_ERROR;
         }
         $lock=fopen(WRITEPATH.'department-library.lock','c');
-        if (!$lock || !flock($lock,LOCK_EX|LOCK_NB)) { CLI::error('Another library migration is running.'); return EXIT_ERROR; }
+        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            CLI::error('Another library migration is running.');
+            return EXIT_ERROR;
+        }
         try {
             $result=(new DepartmentLibraryService($db,service('storage')))->backfill();
             $directory=WRITEPATH.'recovery';
-            if (!is_dir($directory)) mkdir($directory,0700,true);
+            if (! is_dir($directory)) {
+                mkdir($directory, 0700, true);
+            }
             $report=$directory.'/independent-departments-'.gmdate('Ymd-His').'.json';
             file_put_contents($report,json_encode(['result'=>$result,'files'=>$db->table('department_files')->get()->getResultArray(),'folders'=>$db->table('department_folders')->get()->getResultArray()],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR),LOCK_EX);
             CLI::write(json_encode($result,JSON_PRETTY_PRINT));

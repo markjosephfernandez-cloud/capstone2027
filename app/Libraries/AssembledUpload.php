@@ -25,7 +25,9 @@ final class AssembledUpload extends UploadedFile
             throw new RuntimeException('The assembled upload cannot be moved.');
         }
         $destination = rtrim($targetPath, '/\\') . DIRECTORY_SEPARATOR . $name;
-        if (! $overwrite) $destination = $this->getDestination($destination);
+        if (! $overwrite) {
+            $destination = $this->getDestination($destination);
+        }
         if (! @rename($this->path, $destination)) {
             throw new RuntimeException('The assembled upload could not be stored. Check available disk space.');
         }

@@ -23,20 +23,28 @@ class CleanMediaTagsCommand extends BaseCommand
         $backup = null;
         if ($apply) {
             $directory = WRITEPATH . 'backups';
-            if (! is_dir($directory)) mkdir($directory, 0700, true);
+            if (! is_dir($directory)) {
+                mkdir($directory, 0700, true);
+            }
             $path = $directory . '/tag-cleanup-' . gmdate('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.jsonl';
             $backup = fopen($path, 'xb');
-            if (! $backup) throw new \RuntimeException('Could not create tag backup.');
+            if (! $backup) {
+                throw new \RuntimeException('Could not create tag backup.');
+            }
             chmod($path, 0600);
             $db->transBegin();
         }
         $record = static function (array $row) use ($backup): void {
             $line = json_encode($row, JSON_THROW_ON_ERROR) . "\n";
-            if (fwrite($backup, $line) !== strlen($line) || ! fflush($backup)) throw new \RuntimeException('Tag backup could not be written.');
+            if (fwrite($backup, $line) !== strlen($line) || ! fflush($backup)) {
+                throw new \RuntimeException('Tag backup could not be written.');
+            }
         };
         try {
             foreach (['files', 'department_files'] as $table) {
-                if (! $db->tableExists($table)) continue;
+                if (! $db->tableExists($table)) {
+                    continue;
+                }
                 $lastId = 0;
                 do {
                     $rows = $db->table($table)->select('id, tags, filename, filetype, mime_type, media_kind')->where('id >', $lastId)->orderBy('id')->limit(500)->get()->getResultArray();
@@ -44,12 +52,16 @@ class CleanMediaTagsCommand extends BaseCommand
                         $lastId = (int) $file['id'];
                         $old = (string) ($file['tags'] ?? '');
                         $clean = MediaTagPolicy::clean($old, $file);
-                        if ($clean === $old) continue;
+                        if ($clean === $old) {
+                            continue;
+                        }
                         $filesChanged++;
                         if ($apply) {
                             $record(['table' => $table, 'id' => $lastId, 'tags' => $old]);
                             $db->table($table)->where('id', $lastId)->where('tags', $old)->update(['tags' => $clean]);
-                            if ($db->affectedRows() !== 1) throw new \RuntimeException('A file changed during cleanup; retry safely.');
+                            if ($db->affectedRows() !== 1) {
+                                throw new \RuntimeException('A file changed during cleanup; retry safely.');
+                            }
                         }
                     }
                 } while (count($rows) === 500);
@@ -61,26 +73,37 @@ class CleanMediaTagsCommand extends BaseCommand
                     foreach ($rows as $row) {
                         $lastId = (int) $row['tag_id'];
                         $clean = MediaTagPolicy::normalize((string) $row['tag'], $row);
-                        if ($clean === (string) $row['tag']) continue;
+                        if ($clean === (string) $row['tag']) {
+                            continue;
+                        }
                         $clean === '' ? $tagsRemoved++ : $tagsRenamed++;
                         if ($apply) {
                             $original = array_diff_key($row, array_flip(['filename', 'filetype', 'mime_type', 'media_kind']));
                             $record(['table' => 'tag', 'row' => $original]);
                             $builder = $db->table('tag')->where('tag_id', $lastId)->where('tag', $row['tag']);
                             $clean === '' ? $builder->delete() : $builder->update(['tag' => $clean]);
-                            if ($db->affectedRows() !== 1) throw new \RuntimeException('A tag changed during cleanup; retry safely.');
+                            if ($db->affectedRows() !== 1) {
+                                throw new \RuntimeException('A tag changed during cleanup; retry safely.');
+                            }
                         }
                     }
                 } while (count($rows) === 500);
             }
             if ($apply) {
-                if (! $db->transStatus()) throw new \RuntimeException('Database cleanup failed.');
+                if (! $db->transStatus()) {
+                    throw new \RuntimeException('Database cleanup failed.');
+                }
                 $db->transCommit();
                 fclose($backup);
                 CLI::write('Backup: ' . $path);
             }
         } catch (\Throwable $error) {
-            if ($apply) { $db->transRollback(); if (is_resource($backup)) fclose($backup); }
+            if ($apply) {
+                $db->transRollback();
+                if (is_resource($backup)) {
+                    fclose($backup);
+                }
+            }
             throw $error;
         }
         CLI::write(($apply ? 'Updated ' : 'Would update ') . $filesChanged . ' file records; ' . ($apply ? 'removed ' : 'would remove ') . $tagsRemoved . ' tag records; ' . ($apply ? 'renamed ' : 'would rename ') . $tagsRenamed . ' tag records.');

@@ -77,6 +77,8 @@ $routes->post('workspace/ifound/(:num)/review', 'Web\\WorkspaceController::revie
 $routes->get('workspace/downloads', 'Web\\WorkspaceController::downloads');
 $routes->get('workspace/trash', 'Web\\WorkspaceController::trash');
 $routes->get('workspace/trash/folders/(:num)', 'Web\\WorkspaceController::trashFolder/$1');
+$routes->get('workspace/trash/server/(:segment)/folder', 'Web\\WorkspaceController::serverTrashFolder/$1');
+$routes->get('workspace/trash/server/(:segment)/preview', 'Web\\WorkspaceController::serverTrashPreview/$1');
 $routes->get('workspace/trash/(:num)/preview', 'Web\\WorkspaceController::trashPreview/$1');
 $routes->post('workspace/trash/(:num)/restore', 'Web\\WorkspaceController::restoreFromTrash/$1', ['filter' => 'csrf']);
 $routes->post('workspace/trash/(:num)/delete', 'Web\\WorkspaceController::permanentlyDeleteFromTrash/$1', ['filter' => 'csrf']);
@@ -109,6 +111,7 @@ $routes->get('workspace/notifications', 'Web\\NotificationController::index');
 $routes->post('notifications/read-all', 'Web\\NotificationController::readAll', ['filter' => 'csrf']);
 $routes->post('notifications/(:num)/read', 'Web\\NotificationController::read/$1', ['filter' => 'csrf']);
 $routes->get('workspace/audit-logs', 'Web\\AddonsController::auditLogs');
+$routes->get('logout/token', 'Web\\AuthController::logoutToken', ['filter' => 'csrf']);
 $routes->post('logout', 'Web\\AuthController::logout', ['filter' => 'csrf']);
 
 $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api', 'filter' => 'apiCors'], static function (RouteCollection $routes): void {

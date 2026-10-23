@@ -79,8 +79,12 @@ class DistributionService
                 'status' => 'pending', 'authorization_status' => 'not_authorized', 'current_cycle' => $cycle,
                 'transmitted_by' => (int) ($actor['employee_id'] ?? 0), 'transmitted_at' => $now, 'updated_at' => $now,
             ];
-            if (empty($request['transaction_code'])) $requestUpdate['transaction_code'] = $this->transactionCode($requestId, (string) $request['submitted_at']);
-            if ((int) ($request['current_cycle'] ?? 0) === 0) $requestUpdate['original_sender'] = (int) ($actor['employee_id'] ?? 0);
+            if (empty($request['transaction_code'])) {
+                $requestUpdate['transaction_code'] = $this->transactionCode($requestId, (string) $request['submitted_at']);
+            }
+            if ((int) ($request['current_cycle'] ?? 0) === 0) {
+                $requestUpdate['original_sender'] = (int) ($actor['employee_id'] ?? 0);
+            }
             $db->table('media_requests')->where('id', $requestId)->update($requestUpdate);
         }
         $submissionType = $cycle === 1 ? 'original' : 'resubmission';
@@ -90,7 +94,9 @@ class DistributionService
 
         foreach ($folderIds as $folderId) {
             $folder = $db->table('folder')->select('id, name, path')->where('id', $folderId)->where('is_deleted', 0)->get()->getRowArray();
-            if ($folder === null) continue;
+            if ($folder === null) {
+                continue;
+            }
             $exists = $db->table('media_assignment_folders')->where('request_id', $requestId)->where('folder_id', $folderId)->where((new \Config\Storage())->centralized() ? 'cycle_number' : 'cycle_number <=', (new \Config\Storage())->centralized() ? $cycle : PHP_INT_MAX)->countAllResults() > 0;
             if (! $exists) {
                 $db->table('media_assignment_folders')->insert([
@@ -104,7 +110,9 @@ class DistributionService
         }
         foreach ($mediaIds as $mediaId) {
             $file = $db->table('files')->select('id, filename, filepath')->where('id', $mediaId)->where('is_deleted', 0)->get()->getRowArray();
-            if ($file === null) continue;
+            if ($file === null) {
+                continue;
+            }
             $exists = $db->table('media_assignments')->where('request_id', $requestId)->where('media_id', $mediaId)->where((new \Config\Storage())->centralized() ? 'cycle_number' : 'cycle_number <=', (new \Config\Storage())->centralized() ? $cycle : PHP_INT_MAX)->countAllResults() > 0;
             if (! $exists) {
                 $db->table('media_assignments')->insert([
@@ -122,7 +130,9 @@ class DistributionService
         $this->action($db, $actor, $submissionType, $requestId, null, $fileCount, $department, $now, $cycle, 'pending', 'not_authorized', null, $items);
         $this->notifyDepartment($db, $department, 'Transaction ' . $this->transactionCode($requestId, $now) . ' is ready for review. The media is not yet authorized for File Management.', site_url('workspace/distribution?request=' . $requestId), $now, $cycle === 1 ? 'Media awaiting review' : 'Media resubmission awaiting review');
         $db->transComplete();
-        if (! $db->transStatus()) throw new RuntimeException('The media transaction could not be saved.');
+        if (! $db->transStatus()) {
+            throw new RuntimeException('The media transaction could not be saved.');
+        }
 
         return ['file_count' => $fileCount, 'folder_count' => $folderCount, 'request_id' => $requestId, 'cycle' => $cycle];
     }
@@ -131,7 +141,9 @@ class DistributionService
     public function markIncomplete(int $requestId, array $actor, string $feedback): void
     {
         $feedback = trim(mb_substr($feedback, 0, 4000));
-        if ($feedback === '') throw new RuntimeException('Feedback is required when marking a transaction as incomplete.');
+        if ($feedback === '') {
+            throw new RuntimeException('Feedback is required when marking a transaction as incomplete.');
+        }
         $db = db_connect();
         $request = $this->reviewableRequest($db, $requestId, $actor);
         $now = gmdate('Y-m-d H:i:s');
@@ -140,20 +152,26 @@ class DistributionService
         $this->action($db, $actor, 'marked_incomplete', $requestId, null, 0, (string) $request['department'], $now, (int) $request['current_cycle'], 'pending_incomplete', 'not_authorized', $feedback);
         $this->notifyCreativeAdmins($db, 'distribution_incomplete', 'Transaction requires corrections', $this->transactionCode($requestId, (string) $request['submitted_at']) . " was marked incomplete by " . (string) $request['department'] . ".\n\nFeedback:\n" . $feedback, site_url('workspace/distribution?request=' . $requestId), $now);
         $db->transComplete();
-        if (! $db->transStatus()) throw new RuntimeException('The incomplete review could not be saved.');
+        if (! $db->transStatus()) {
+            throw new RuntimeException('The incomplete review could not be saved.');
+        }
     }
 
     /** @param array<string,mixed> $actor */
     public function authorize(int $requestId, array $actor, string $feedback): void
     {
         $feedback = trim(mb_substr($feedback, 0, 4000));
-        if ($feedback === '') throw new RuntimeException('Completion feedback is required before confirming this transaction as complete.');
+        if ($feedback === '') {
+            throw new RuntimeException('Completion feedback is required before confirming this transaction as complete.');
+        }
         $db = db_connect();
         $request = $this->reviewableRequest($db, $requestId, $actor);
         $assignments = $db->table('media_assignments ma')->select('ma.id, ma.media_id, ma.delivery_filepath, f.filepath, f.folder_id')->join('files f', 'f.id = ma.media_id', 'inner')->where('ma.request_id', $requestId)->where('ma.cycle_number <=', (int)$request['current_cycle'])->where('f.is_deleted', 0)->orderBy('ma.cycle_number', 'DESC')->orderBy('ma.id', 'DESC')->get()->getResultArray();
         $folderAssignments = $db->table('media_assignment_folders')->where('request_id',$requestId)->where('cycle_number <=',(int)$request['current_cycle'])->orderBy('cycle_number', 'DESC')->orderBy('id', 'DESC')->get()->getResultArray();
         [$assignments, $folderAssignments] = $this->latestDeliveredItems($assignments, $folderAssignments);
-        if ($assignments === [] && $folderAssignments === []) throw new RuntimeException('This transaction has no available files to authorize.');
+        if ($assignments === [] && $folderAssignments === []) {
+            throw new RuntimeException('This transaction has no available files to authorize.');
+        }
         $storage = service('storage');
         $created = [];
         $now = gmdate('Y-m-d H:i:s');
@@ -162,7 +180,9 @@ class DistributionService
             $db->transStart();
             foreach ($assignments as $assignment) {
                 if ((new \Config\Storage())->centralized()) {
-                    if (empty($assignment['delivery_filepath'])) throw new RuntimeException('This delivery must be migrated before completion.');
+                    if (empty($assignment['delivery_filepath'])) {
+                        throw new RuntimeException('This delivery must be migrated before completion.');
+                    }
                     $stored = ['filepath'=>$storage->resolveDatabaseFile($assignment['delivery_filepath'])];
                 } else {
                     $stored = $storage->storeDepartmentCopy($storage->resolveDatabaseFile((string) $assignment['filepath']), (string) $request['department'], $this->fileFolderPath($db, empty($assignment['folder_id']) ? null : (int) $assignment['folder_id']));
@@ -190,11 +210,19 @@ class DistributionService
             $this->action($db, $actor, 'confirmed_complete', $requestId, null, count($assignments), (string) $request['department'], $now, (int) $request['current_cycle'], 'complete', 'authorized', $feedback);
             $this->notifyCreativeAdmins($db, 'distribution_complete', 'Transaction completed', $this->transactionCode($requestId, (string) $request['submitted_at']) . ' was confirmed complete and authorized by ' . (string) $request['department'] . '.', site_url('workspace/distribution?request=' . $requestId), $now);
             $db->transComplete();
-            if (! $db->transStatus()) throw new RuntimeException('The transaction could not be authorized.');
+            if (! $db->transStatus()) {
+                throw new RuntimeException('The transaction could not be authorized.');
+            }
         } catch (\Throwable $e) {
             $db->transRollback();
-            foreach (array_reverse($created) as $path) if (is_file($path)) @unlink($path);
-            if ($e instanceof RuntimeException) throw $e;
+            foreach (array_reverse($created) as $path) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+            if ($e instanceof RuntimeException) {
+                throw $e;
+            }
             throw new RuntimeException('The transaction could not be authorized.', 0, $e);
         }
     }
@@ -212,23 +240,36 @@ class DistributionService
                 continue;
             }
             $seenFolders[$id] = true;
-            if ($path !== '') $seenFolderPaths[$path] = true;
+            if ($path !== '') {
+                $seenFolderPaths[$path] = true;
+            }
             $latestFolders[] = $folder;
         }
         $latestFiles = []; $seenFiles = []; $seenFilePaths = [];
         foreach ($files as $file) {
             $path = (string) ($file['delivery_filepath'] ?? '');
-            foreach ($supersededPaths as $prefix) if (str_starts_with($path, $prefix)) continue 2;
+            foreach ($supersededPaths as $prefix) {
+                if (str_starts_with($path, $prefix)) {
+                    continue 2;
+                }
+            }
             $id = (int) $file['media_id'];
-            if (isset($seenFiles[$id]) || ($path !== '' && isset($seenFilePaths[$path]))) continue;
+            if (isset($seenFiles[$id]) || $path !== '' && isset($seenFilePaths[$path])) {
+                continue;
+            }
             $seenFiles[$id] = true;
-            if ($path !== '') $seenFilePaths[$path] = true;
+            if ($path !== '') {
+                $seenFilePaths[$path] = true;
+            }
             $latestFiles[] = $file;
         }
         return [$latestFiles, $latestFolders];
     }
 
-    /** @param array<string,mixed> $actor @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $actor
+     * @return array<string,mixed>
+     */
     private function reviewableRequest($db, int $requestId, array $actor): array
     {
         $request = $db->table('media_requests')->where('id', $requestId)->where('department', trim((string) ($actor['department'] ?? '')))->get()->getRowArray();

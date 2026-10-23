@@ -15,7 +15,9 @@ class VideoPreviewService
     {
         clearstatcache(true, $source);
         $stat = @stat($source);
-        if ($stat === false || ! is_file($source)) throw new RuntimeException('Video not found.');
+        if ($stat === false || ! is_file($source)) {
+            throw new RuntimeException('Video not found.');
+        }
         $key = hash('sha256', 'v1|' . $source . '|' . $stat['mtime'] . '|' . $stat['ctime'] . '|' . $stat['size']);
         if (! is_dir($this->cacheDirectory) && ! @mkdir($this->cacheDirectory, 0770, true) && ! is_dir($this->cacheDirectory)) {
             throw new RuntimeException('Video preview storage is unavailable.');
@@ -28,18 +30,26 @@ class VideoPreviewService
     {
         $key = $this->cacheKey($source);
         $target = $this->cacheDirectory . '/' . $key . '-poster.jpg';
-        if (is_file($target)) return $target;
+        if (is_file($target)) {
+            return $target;
+        }
         $lock = fopen($target . '.lock', 'c');
-        if ($lock === false) throw new RuntimeException('Video thumbnail is unavailable.');
+        if ($lock === false) {
+            throw new RuntimeException('Video thumbnail is unavailable.');
+        }
         $temporary = null;
         $previousTimeLimit = $this->allowPreparationTime(100); // Lock + two 30-second frame attempts.
         try {
             $deadline = microtime(true) + 30;
             while (! flock($lock, LOCK_EX | LOCK_NB)) {
-                if (microtime(true) > $deadline) throw new RuntimeException('Video thumbnail is still being prepared.');
+                if (microtime(true) > $deadline) {
+                    throw new RuntimeException('Video thumbnail is still being prepared.');
+                }
                 usleep(100000);
             }
-            if (is_file($target)) return $target;
+            if (is_file($target)) {
+                return $target;
+            }
             $temporary = $target . '.' . bin2hex(random_bytes(6)) . '.tmp.jpg';
             foreach (['1', '0'] as $seek) {
                 try {
@@ -55,14 +65,18 @@ class VideoPreviewService
                     continue;
                 }
                 clearstatcache(true, $temporary);
-                if (is_file($temporary) && filesize($temporary) > 0) break;
+                if (is_file($temporary) && filesize($temporary) > 0) {
+                    break;
+                }
             }
             if (! is_file($temporary) || filesize($temporary) === 0 || ! rename($temporary, $target)) {
                 throw new RuntimeException('Video thumbnail could not be created.');
             }
             return $target;
         } finally {
-            if ($temporary !== null && is_file($temporary)) unlink($temporary);
+            if ($temporary !== null && is_file($temporary)) {
+                unlink($temporary);
+            }
             flock($lock, LOCK_UN);
             fclose($lock);
             $this->restoreTimeLimit($previousTimeLimit);
@@ -74,29 +88,43 @@ class VideoPreviewService
         $key = $this->cacheKey($source);
         $target = $this->cacheDirectory . '/' . $key . '.mp4';
         $compatible = $this->cacheDirectory . '/' . $key . '.original';
-        if (is_file($target)) return $target;
-        if (is_file($compatible)) return $source;
+        if (is_file($target)) {
+            return $target;
+        }
+        if (is_file($compatible)) {
+            return $source;
+        }
 
         // Concurrent metadata/range requests must not encode the same video twice.
         $lock = fopen($this->cacheDirectory . '/' . $key . '.lock', 'c');
-        if ($lock === false) throw new RuntimeException('Video preview is unavailable.');
+        if ($lock === false) {
+            throw new RuntimeException('Video preview is unavailable.');
+        }
         $temporary = null;
         $previousTimeLimit = $this->allowPreparationTime(390); // Lock + probe + conversion, with cleanup time.
         try {
             $deadline = microtime(true) + 180;
             while (! flock($lock, LOCK_EX | LOCK_NB)) {
-                if (microtime(true) > $deadline) throw new RuntimeException('Video preview is still being prepared. Try again shortly.');
+                if (microtime(true) > $deadline) {
+                    throw new RuntimeException('Video preview is still being prepared. Try again shortly.');
+                }
                 usleep(100000);
             }
-            if (is_file($target)) return $target;
-            if (is_file($compatible)) return $source;
+            if (is_file($target)) {
+                return $target;
+            }
+            if (is_file($compatible)) {
+                return $source;
+            }
             $metadata = json_decode($this->run([
                 $this->binary('ffprobe'), '-v', 'error', '-show_entries',
                 'stream=codec_type,codec_name,pix_fmt:format=format_name', '-of', 'json', $source,
             ], 15), true);
             $videos = array_values(array_filter($metadata['streams'] ?? [], static fn ($stream) => ($stream['codec_type'] ?? '') === 'video'));
             $audios = array_values(array_filter($metadata['streams'] ?? [], static fn ($stream) => ($stream['codec_type'] ?? '') === 'audio'));
-            if ($videos === []) throw new RuntimeException('This file does not contain a video track.');
+            if ($videos === []) {
+                throw new RuntimeException('This file does not contain a video track.');
+            }
             $video = $videos[0];
             $format = $metadata['format']['format_name'] ?? '';
             $mp4 = str_contains($format, 'mp4') && ($video['codec_name'] ?? '') === 'h264' && ($video['pix_fmt'] ?? '') === 'yuv420p';
@@ -120,7 +148,9 @@ class VideoPreviewService
             }
             return $target;
         } finally {
-            if ($temporary !== null && is_file($temporary)) unlink($temporary);
+            if ($temporary !== null && is_file($temporary)) {
+                unlink($temporary);
+            }
             flock($lock, LOCK_UN);
             fclose($lock);
             $this->restoreTimeLimit($previousTimeLimit);
@@ -138,25 +168,35 @@ class VideoPreviewService
 
     private function restoreTimeLimit(int $seconds): void
     {
-        if ((int) ini_get('max_execution_time') !== $seconds) set_time_limit($seconds);
+        if ((int) ini_get('max_execution_time') !== $seconds) {
+            set_time_limit($seconds);
+        }
     }
 
     private function binary(string $name): string
     {
         $configured = (string) env('greyhound.' . $name . 'Binary', '');
-        if ($configured !== '') return $configured;
+        if ($configured !== '') {
+            return $configured;
+        }
         foreach (array_merge(explode(PATH_SEPARATOR, (string) getenv('PATH')), ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin']) as $directory) {
             $path = rtrim($directory, '/\\') . DIRECTORY_SEPARATOR . $name . (PHP_OS_FAMILY === 'Windows' ? '.exe' : '');
-            if (is_file($path) && is_executable($path)) return $path;
+            if (is_file($path) && is_executable($path)) {
+                return $path;
+            }
         }
         throw new RuntimeException('Video preview conversion is unavailable.');
     }
 
     private function run(array $command, int $timeout): string
     {
-        if (! function_exists('proc_open')) throw new RuntimeException('Video preview conversion is unavailable.');
+        if (! function_exists('proc_open')) {
+            throw new RuntimeException('Video preview conversion is unavailable.');
+        }
         $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-        if (! is_resource($process)) throw new RuntimeException('Video preview conversion could not start.');
+        if (! is_resource($process)) {
+            throw new RuntimeException('Video preview conversion could not start.');
+        }
         fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
@@ -172,10 +212,14 @@ class VideoPreviewService
                     throw new RuntimeException('Video preview preparation timed out.');
                 }
                 $status = proc_get_status($process);
-                if ($status['running']) usleep(10000);
+                if ($status['running']) {
+                    usleep(10000);
+                }
             } while ($status['running']);
             $output .= stream_get_contents($pipes[1]);
-            if ($status['exitcode'] !== 0) throw new RuntimeException('Video preview could not be prepared.');
+            if ($status['exitcode'] !== 0) {
+                throw new RuntimeException('Video preview could not be prepared.');
+            }
             return $output;
         } finally {
             fclose($pipes[1]);

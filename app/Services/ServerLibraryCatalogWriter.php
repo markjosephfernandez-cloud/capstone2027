@@ -4,7 +4,9 @@ namespace App\Services;
 /** Publish successful app writes without waiting for a full NAS scan. */
 class ServerLibraryCatalogWriter
 {
-    public function __construct(private readonly ServerLibraryService $library) {}
+    public function __construct(private readonly ServerLibraryService $library)
+    {
+    }
 
     /** Relocate cached descendants without re-reading a large NAS directory tree. */
     public function move(string $old, string $new): void
@@ -15,8 +17,13 @@ class ServerLibraryCatalogWriter
             throw new \RuntimeException('Invalid catalog move destination.');
         }
         $db = db_connect();
-        if ($db->DBDriver === 'MySQLi' && $db->transDepth === 0) { $db->close(); $db->initialize(); }
-        if (!$db->tableExists('server_library_index')) return;
+        if ($db->DBDriver === 'MySQLi' && $db->transDepth === 0) {
+            $db->close();
+            $db->initialize();
+        }
+        if (! $db->tableExists('server_library_index')) {
+            return;
+        }
         $source = $this->library->catalogSourceKey();
         $db->transStart();
         try {
@@ -26,7 +33,9 @@ class ServerLibraryCatalogWriter
             $root = $db->table('server_library_index')->where('source_key', $source)
                 ->where('path_hash', hash('sha256', $old))->get()->getResultArray();
             $relocate = function (array $rows) use ($db, $old, $new): void {
-                if (!$rows) return;
+                if (! $rows) {
+                    return;
+                }
                 $db->table('server_library_index')->whereIn('id', array_column($rows, 'id'))->delete();
                 foreach ($rows as &$row) {
                     unset($row['id']);
@@ -47,14 +56,20 @@ class ServerLibraryCatalogWriter
                     $rows = $db->table('server_library_index')->where('source_key', $source)
                         ->whereIn('parent_hash', array_map(static fn ($path) => hash('sha256', $path), $batch))
                         ->limit(200)->get()->getResultArray();
-                    foreach ($rows as $row) if ($row['is_dir']) $parents[] = $row['path'];
+                    foreach ($rows as $row) {
+                        if ($row['is_dir']) {
+                            $parents[] = $row['path'];
+                        }
+                    }
                     $relocate($rows);
                 } while (count($rows) === 200);
             }
             $db->table('server_library_scan_queue')->where('source_key',$source)->groupStart()
                 ->where('path',$old)->orLike('path',$old.'/','after')->groupEnd()->delete();
             $db->transComplete();
-            if (!$db->transStatus()) throw new \RuntimeException('Could not relocate catalog entries.');
+            if (! $db->transStatus()) {
+                throw new \RuntimeException('Could not relocate catalog entries.');
+            }
         } catch (\Throwable $error) { $db->transRollback(); throw $error; }
     }
 
@@ -66,12 +81,16 @@ class ServerLibraryCatalogWriter
             $path = $this->library->relative($path);
             // Include parents created by nested folder uploads.
             while ($path !== '') {
-                if (isset($rows[$path])) break;
+                if (isset($rows[$path])) {
+                    break;
+                }
                 try { $absolute = $this->library->resolve($path); }
                 catch (\RuntimeException) { $absolute = $this->library->resolve($path, true); }
                 clearstatcache(true, $absolute);
                 $stat = @stat($absolute);
-                if (!$stat) throw new \RuntimeException('Cannot read the saved server item.');
+                if (! $stat) {
+                    throw new \RuntimeException('Cannot read the saved server item.');
+                }
                 $directory = is_dir($absolute);
                 $parent = dirname($path) === '.' ? '' : dirname($path);
                 $passport = $metadata['media'][$path]['passport'] ?? [];
@@ -85,25 +104,37 @@ class ServerLibraryCatalogWriter
                 $path = $parent;
             }
         }
-        if (!$rows) return;
+        if (! $rows) {
+            return;
+        }
         $db = db_connect();
         // A NAS operation may outlive an idle MySQL connection.
         if ($db->DBDriver === 'MySQLi' && $db->transDepth === 0) { $db->close(); $db->initialize(); }
-        if (!$db->tableExists('server_library_index')) return;
+        if (! $db->tableExists('server_library_index')) {
+            return;
+        }
         $db->transStart();
         try {
             $state = $db->table('server_library_sources')->where('source_key', $source)->get()->getRowArray();
-            foreach ($rows as &$row) $row['run_id'] = $state['run_id'] ?? '';
+            foreach ($rows as &$row) {
+                $row['run_id'] = $state['run_id'] ?? '';
+            }
             unset($row);
             $db->table('server_library_index')->onConstraint(['source_key','path_hash'])->upsertBatch(array_values($rows));
             $db->transComplete();
-            if (!$db->transStatus()) throw new \RuntimeException('Could not update the server catalog.');
+            if (! $db->transStatus()) {
+                throw new \RuntimeException('Could not update the server catalog.');
+            }
             if ((new \Config\Storage())->centralized()) {
                 $identities = new CentralMediaService($this->library);
-                foreach ($rows as $row) $identities->identity($row['path'],(bool)$row['is_dir']);
+                foreach ($rows as $row) {
+                    $identities->identity($row['path'], (bool) $row['is_dir']);
+                }
             }
         } catch (\Throwable $error) {
-            if ($db->transDepth > 0) $db->transRollback();
+            if ($db->transDepth > 0) {
+                $db->transRollback();
+            }
             throw $error;
         }
     }

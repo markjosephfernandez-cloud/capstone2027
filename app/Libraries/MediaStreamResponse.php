@@ -54,7 +54,9 @@ final class MediaStreamResponse extends DownloadResponse
                 $remaining = $this->length;
                 while ($remaining > 0 && ! feof($this->stream) && ! connection_aborted()) {
                     $chunk = fread($this->stream, min(1048576, $remaining));
-                    if ($chunk === false || $chunk === '') break;
+                    if ($chunk === false || $chunk === '') {
+                        break;
+                    }
                     $remaining -= strlen($chunk);
                     echo $chunk;
                     unset($chunk);
@@ -66,7 +68,9 @@ final class MediaStreamResponse extends DownloadResponse
             }
         } finally {
             $this->closeStream();
-            if ((int) ini_get('max_execution_time') !== $previousTimeLimit) set_time_limit($previousTimeLimit);
+            if ((int) ini_get('max_execution_time') !== $previousTimeLimit) {
+                set_time_limit($previousTimeLimit);
+            }
         }
 
         return $this;
@@ -79,7 +83,9 @@ final class MediaStreamResponse extends DownloadResponse
 
     private function closeStream(): void
     {
-        if (is_resource($this->stream)) fclose($this->stream);
+        if (is_resource($this->stream)) {
+            fclose($this->stream);
+        }
         $this->stream = null;   
     }
 }

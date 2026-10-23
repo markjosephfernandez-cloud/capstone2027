@@ -18,7 +18,9 @@ class ServerLibraryIndexCommand extends BaseCommand
         try {
             $folder = CLI::getOption('refresh-folder');
             if ($folder !== null) {
-                if (!is_string($folder) || $folder === '') throw new \RuntimeException('Provide a named folder relative to the server root.');
+                if (! is_string($folder) || $folder === '') {
+                    throw new \RuntimeException('Provide a named folder relative to the server root.');
+                }
                 $library = new \App\Services\ServerLibraryService();
                 $folder = $library->relative($folder);
                 $directory = $library->resolve($folder, true);
@@ -28,11 +30,21 @@ class ServerLibraryIndexCommand extends BaseCommand
                 $count = 0;
                 $deadline = microtime(true) + 60;
                 foreach (new \DirectoryIterator($directory) as $entry) {
-                    if (microtime(true) >= $deadline) throw new \RuntimeException('Folder refresh reached its time limit; completed entries are saved.');
-                    if ($entry->isDot() || $entry->isLink() || str_starts_with($entry->getFilename(), '.')) continue;
+                    if (microtime(true) >= $deadline) {
+                        throw new \RuntimeException('Folder refresh reached its time limit; completed entries are saved.');
+                    }
+                    if ($entry->isDot() || $entry->isLink() || str_starts_with($entry->getFilename(), '.')) {
+                        continue;
+                    }
                     $path = $folder . '/' . $entry->getFilename();
-                    try { $library->relative($path); } catch (\RuntimeException) { continue; }
-                    if (!$entry->isDir() && !$entry->isFile()) continue;
+                    try {
+                        $library->relative($path);
+                    } catch (\RuntimeException) {
+                        continue;
+                    }
+                    if (! $entry->isDir() && ! $entry->isFile()) {
+                        continue;
+                    }
                     $writer->sync([$path], $metadata);
                     $count++;
                 }
@@ -45,7 +57,9 @@ class ServerLibraryIndexCommand extends BaseCommand
                 return EXIT_SUCCESS;
             }
             $seconds = CLI::getOption('seconds');
-            if ($seconds !== null && (!ctype_digit((string)$seconds) || (int)$seconds < 1)) throw new \RuntimeException('--seconds must be a positive integer.');
+            if ($seconds !== null && (! ctype_digit((string) $seconds) || (int) $seconds < 1)) {
+                throw new \RuntimeException('--seconds must be a positive integer.');
+            }
             $result = (new ServerLibraryIndexer(db_connect(), new \Config\Storage()))->run((int)($seconds ?? 0), CLI::getOption('restart') !== null);
             CLI::write('Catalog ' . $result['status'] . '; indexed ' . $result['processed'] . ' entries in this run.');
             return EXIT_SUCCESS;

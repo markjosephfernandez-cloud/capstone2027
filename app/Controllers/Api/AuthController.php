@@ -2,11 +2,12 @@
 
 namespace App\Controllers\Api;
 
-use App\Models\UserModel;
+use App\Exceptions\MisAuthenticationUnavailable;
+use CodeIgniter\HTTP\ResponseInterface;
 
 class AuthController extends ApiController
 {
-    public function login()
+    public function login(): ResponseInterface
     {
         $input      = $this->input();
         $employeeId = filter_var($input['employee_id'] ?? null, FILTER_VALIDATE_INT);
@@ -16,7 +17,11 @@ class AuthController extends ApiController
             return $this->error('validation_error', 'Employee ID and password are required.', 422);
         }
 
-        $user = service('credentials')->attempt((int) $employeeId, $password);
+        try {
+            $user = service('credentials')->attempt((int) $employeeId, $password);
+        } catch (MisAuthenticationUnavailable $e) {
+            return $this->error('authentication_unavailable', $e->getMessage(), 503);
+        }
         if ($user === null) {
             return $this->error('invalid_credentials', 'The supplied credentials are invalid.', 401);
         }
@@ -33,12 +38,12 @@ class AuthController extends ApiController
         ]);
     }
 
-    public function me()
+    public function me(): ResponseInterface
     {
         return $this->success($this->actor());
     }
 
-    public function logout()
+    public function logout(): ResponseInterface
     {
         $actor = $this->actor();
         service('tokenService')->revoke($this->request->getHeaderLine('Authorization'));

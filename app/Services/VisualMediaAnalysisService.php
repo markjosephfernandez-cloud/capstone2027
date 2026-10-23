@@ -11,11 +11,17 @@ class VisualMediaAnalysisService
     public function analyzeAndStore(array $file, ?array $tasks = null): array
     {
         $this->requestedTasks = $tasks ?? ['objects', 'expressions'];
-        if (array_diff($this->requestedTasks, ['objects', 'expressions'])) throw new RuntimeException('Invalid visual analysis task.');
+        if (array_diff($this->requestedTasks, ['objects', 'expressions'])) {
+            throw new RuntimeException('Invalid visual analysis task.');
+        }
         $lock = fopen(WRITEPATH . 'cache/visual-analysis-' . (int) $file['id'] . '.lock', 'c');
-        if (!$lock) throw new RuntimeException('Cannot lock image analysis.');
+        if (! $lock) {
+            throw new RuntimeException('Cannot lock image analysis.');
+        }
         try {
-            if (!flock($lock, LOCK_EX | LOCK_NB)) throw new RuntimeException('This image is already being analyzed. Wait for that scan to finish, then retry.', 409);
+            if (! flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new RuntimeException('This image is already being analyzed. Wait for that scan to finish, then retry.', 409);
+            }
             return $this->analyzeLocked($file);
         } finally { flock($lock, LOCK_UN); fclose($lock); }
     }
@@ -27,12 +33,16 @@ class VisualMediaAnalysisService
             throw new RuntimeException('Visual analysis supports images only.');
         }
         $db = db_connect();
-        if (!$db->tableExists('media_visual_analysis')) throw new RuntimeException('Run database migrations before visual analysis.');
+        if (! $db->tableExists('media_visual_analysis')) {
+            throw new RuntimeException('Run database migrations before visual analysis.');
+        }
         $path = service('storage')->resolveDatabaseFile($file['filepath']);
         $result = $this->resultsFor([(int) $file['id']])[$file['id']] ?? [];
         $fresh = array_intersect($this->requestedTasks, ['objects','expressions']) ? $this->requestAnalysis($path) : [];
         foreach (['objects','expressions'] as $task) {
-            if (in_array($task, $this->requestedTasks, true)) $result[$task] = $fresh[$task];
+            if (in_array($task, $this->requestedTasks, true)) {
+                $result[$task] = $fresh[$task];
+            }
             $result[$task] ??= ['status'=>'not_requested','items'=>[]];
         }
         unset($result['duplicates']);
@@ -40,10 +50,14 @@ class VisualMediaAnalysisService
         $result['auto_tags'] = self::automaticTags($result);
         // Read current tags after inference, so edits made while the model was running survive.
         $current = $db->table('files')->where('id', $file['id'])->where('is_deleted', 0)->get()->getRowArray();
-        if (!$current) throw new RuntimeException('This file is no longer available.');
+        if (! $current) {
+            throw new RuntimeException('This file is no longer available.');
+        }
         $tags = MediaTagPolicy::clean(implode(', ', array_merge(explode(',', (string) ($current['tags'] ?? '')), array_column($result['auto_tags'], 'label'))), $current);
         $updates = ['tags'=>$tags];
-        if (in_array('objects', $this->requestedTasks, true) && $result['objects']['status'] === 'complete') $updates['detected_objects'] = implode(', ', array_unique(array_column($result['objects']['items'], 'label')));
+        if (in_array('objects', $this->requestedTasks, true) && $result['objects']['status'] === 'complete') {
+            $updates['detected_objects'] = implode(', ', array_unique(array_column($result['objects']['items'], 'label')));
+        }
         if (in_array('expressions', $this->requestedTasks, true) && in_array($result['expressions']['status'], ['complete','no_face'], true)) {
             $updates['emotion'] = implode(', ', array_unique(array_column($result['expressions']['items'], 'label')));
         }
@@ -56,7 +70,9 @@ class VisualMediaAnalysisService
         }
         $db->table('media_visual_analysis')->replace(['file_id'=>$file['id'], 'result_json'=>json_encode($result, JSON_THROW_ON_ERROR), 'analyzed_at'=>$result['analyzed_at']]);
         $db->transComplete();
-        if (!$db->transStatus()) throw new RuntimeException('Could not save visual analysis.');
+        if (! $db->transStatus()) {
+            throw new RuntimeException('Could not save visual analysis.');
+        }
         if ((new \Config\Storage())->centralized() && $db->tableExists('server_media')) {
             $media = $db->table('server_media')->where('file_id', $file['id'])->where('is_deleted', 0)->get()->getRowArray();
             if ($media) {
@@ -82,16 +98,24 @@ class VisualMediaAnalysisService
             if ($endpoint === '') {
                 $eventEndpoint = (new \Config\GreyhoundAi())->eventModelEndpoint();
                 $endpoint = preg_replace('~/predict/?$~', '/analyze', $eventEndpoint);
-                if ($endpoint === '' || $endpoint === $eventEndpoint) throw new RuntimeException('Visual endpoint not configured.');
+                if ($endpoint === '' || $endpoint === $eventEndpoint) {
+                    throw new RuntimeException('Visual endpoint not configured.');
+                }
             }
-            if (filesize($path) > 29 * 1024 * 1024) throw new RuntimeException('Image exceeds analysis upload limit.');
+            if (filesize($path) > 29 * 1024 * 1024) {
+                throw new RuntimeException('Image exceeds analysis upload limit.');
+            }
             $response = service('curlrequest')->post($endpoint, [
                 'connect_timeout'=>3, 'timeout'=>90, 'http_errors'=>false,
                 'multipart'=>['media'=>new \CURLFile($path, mime_content_type($path) ?: 'image/jpeg', basename($path)), 'tasks'=>json_encode(array_values(array_intersect($this->requestedTasks, ['objects','expressions'])))],
             ]);
-            if ($response->getStatusCode() !== 200) throw new RuntimeException('Visual service unavailable.');
+            if ($response->getStatusCode() !== 200) {
+                throw new RuntimeException('Visual service unavailable.');
+            }
             $payload = json_decode($response->getBody(), true, 512, JSON_THROW_ON_ERROR);
-            if (($payload['schema_version'] ?? null) !== 1) throw new RuntimeException('Unsupported visual response.');
+            if (($payload['schema_version'] ?? null) !== 1) {
+                throw new RuntimeException('Unsupported visual response.');
+            }
             return ['objects'=>self::normalizeTask($payload['objects'] ?? null), 'expressions'=>self::normalizeTask($payload['expressions'] ?? null, true)];
         } catch (\Throwable $error) {
             log_message('warning', 'Visual inference unavailable: {message}', ['message'=>$error->getMessage()]);
@@ -105,16 +129,32 @@ class VisualMediaAnalysisService
             return ['status'=>'unavailable', 'items'=>[]];
         }
         $result = ['status'=>$task['status'], 'model'=>is_string($task['model'] ?? null) ? mb_substr($task['model'], 0, 100) : '', 'items'=>[]];
-        if ($result['status'] !== 'complete') return $result;
+        if ($result['status'] !== 'complete') {
+            return $result;
+        }
         foreach (array_slice($task['items'], 0, 100) as $item) {
-            if (!is_array($item) || !is_string($item['label'] ?? null) || !is_numeric($item['confidence'] ?? null)) continue;
+            if (! is_array($item) || ! is_string($item['label'] ?? null) || ! is_numeric($item['confidence'] ?? null)) {
+                continue;
+            }
             $label = trim($item['label']); $score = (float) $item['confidence'];
-            if ($label === '' || mb_strlen($label) > 38 || preg_match('/[<>\x00-\x1f,]/u', $label) || !is_finite($score) || $score < 0 || $score > 100) continue;
-            if ($expressions && !in_array($label, ['angry','disgust','fear','happy','sad','surprise','neutral'], true)) continue;
+            if ($label === '' || mb_strlen($label) > 38 || preg_match('/[<>\x00-\x1f,]/u', $label) || ! is_finite($score) || $score < 0 || $score > 100) {
+                continue;
+            }
+            if ($expressions && ! in_array($label, ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'], true)) {
+                continue;
+            }
             $box = $item['box'] ?? null;
-            if (!is_array($box) || count($box) !== 4 || !array_is_list($box)) continue;
-            foreach ($box as $coordinate) if (!is_numeric($coordinate) || !is_finite((float) $coordinate) || $coordinate < 0 || $coordinate > 1) continue 2;
-            if ($box[2] <= $box[0] || $box[3] <= $box[1]) continue;
+            if (! is_array($box) || count($box) !== 4 || ! array_is_list($box)) {
+                continue;
+            }
+            foreach ($box as $coordinate) {
+                if (! is_numeric($coordinate) || ! is_finite((float) $coordinate) || $coordinate < 0 || $coordinate > 1) {
+                    continue 2;
+                }
+            }
+            if ($box[2] <= $box[0] || $box[3] <= $box[1]) {
+                continue;
+            }
             $result['items'][] = ['label'=>$label, 'confidence'=>round($score, 2), 'box'=>array_map('floatval', $box)];
         }
         return $result;
@@ -124,12 +164,18 @@ class VisualMediaAnalysisService
     {
         $tags = [];
         foreach (['objects'=>50, 'expressions'=>80] as $task=>$threshold) {
-            if (($result[$task]['status'] ?? '') !== 'complete') continue;
+            if (($result[$task]['status'] ?? '') !== 'complete') {
+                continue;
+            }
             foreach ($result[$task]['items'] as $item) {
-                if ($item['confidence'] < $threshold) continue;
+                if ($item['confidence'] < $threshold) {
+                    continue;
+                }
                 $label = $item['label'];
                 $key = mb_strtolower($label);
-                if (isset($tags[$key]) && $tags[$key]['confidence'] >= $item['confidence']) continue;
+                if (isset($tags[$key]) && $tags[$key]['confidence'] >= $item['confidence']) {
+                    continue;
+                }
                 $tags[$key] = ['label'=>$label, 'confidence'=>$item['confidence'], 'source'=>$task, 'model'=>$result[$task]['model'] ?? ''];
             }
         }
@@ -139,11 +185,15 @@ class VisualMediaAnalysisService
     public function resultsFor(array $ids): array
     {
         $db = db_connect();
-        if ($ids === [] || !$db->tableExists('media_visual_analysis')) return [];
+        if ($ids === [] || ! $db->tableExists('media_visual_analysis')) {
+            return [];
+        }
         $results = [];
         foreach ($db->table('media_visual_analysis')->whereIn('file_id', $ids)->get()->getResultArray() as $row) {
             $result = json_decode($row['result_json'], true);
-            if (is_array($result)) $results[$row['file_id']] = $result;
+            if (is_array($result)) {
+                $results[$row['file_id']] = $result;
+            }
         }
         return $results;
     }

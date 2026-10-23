@@ -5,15 +5,21 @@ use CodeIgniter\Database\BaseConnection;
 /** One evolving audit record per uploader/batch; retries replace the item's outcome. */
 class ServerUploadAuditService
 {
-    public function __construct(private readonly BaseConnection $db) {}
+    public function __construct(private readonly BaseConnection $db)
+    {
+    }
 
     public function record(array $actor, array $metadata, string $path, bool $success): void
     {
         $batch = (string) ($metadata['upload_batch_id'] ?? '');
-        if (!preg_match('/^[A-Za-z0-9_-]{8,64}$/D', $batch)) return;
+        if (! preg_match('/^[A-Za-z0-9_-]{8,64}$/D', $batch)) {
+            return;
+        }
         $key = hash('sha256', (string)$actor['employee_id'] . ':' . $batch);
         $item = (string)($metadata['audit_item_id'] ?? '');
-        if ($item === '') $item = hash('sha256', ($metadata['folder_id'] ?? '') . '/' . ($metadata['relative_path'] ?? '') . '/' . ($metadata['name'] ?? $path));
+        if ($item === '') {
+            $item = hash('sha256', ($metadata['folder_id'] ?? '') . '/' . ($metadata['relative_path'] ?? '') . '/' . ($metadata['name'] ?? $path));
+        }
         $expected = max(0, (int)($metadata['audit_total'] ?? 0));
         $this->db->transBegin();
         try {
@@ -22,7 +28,9 @@ class ServerUploadAuditService
             ]);
             // Lock each batch so parallel file completions cannot overwrite each other.
             $sql = 'SELECT * FROM ' . $this->db->protectIdentifiers('server_upload_audit_batches', true) . ' WHERE batch_key = ?';
-            if ($this->db->DBDriver !== 'SQLite3') $sql .= ' FOR UPDATE';
+            if ($this->db->DBDriver !== 'SQLite3') {
+                $sql .= ' FOR UPDATE';
+            }
             $state = $this->db->query($sql, [$key])->getRowArray();
             $items = json_decode($state['items_json'], true, 512, JSON_THROW_ON_ERROR);
             // A late failed retry must not erase an already completed upload.
@@ -34,7 +42,10 @@ class ServerUploadAuditService
             $description = 'Server Library upload batch: ' . $uploaded . ' uploaded, ' . $failed . ' failed, ' . $pending . ' pending or not received; ' . $expected . ' selected. Batch: ' . $batch . '.';
             foreach ($items as $row) {
                 $line = "\n" . ($row['success'] ? 'Uploaded: ' : 'Failed: ') . $row['path'];
-                if (strlen($description) + strlen($line) > 60000) { $description .= "\nAdditional file details retained in upload batch records."; break; }
+                if (strlen($description) + strlen($line) > 60000) {
+                    $description .= "\nAdditional file details retained in upload batch records.";
+                    break;
+                }
                 $description .= $line;
             }
             $auditId = $state['audit_id'];
@@ -52,7 +63,9 @@ class ServerUploadAuditService
             $this->db->table('server_upload_audit_batches')->where('batch_key',$key)->update([
                 'audit_id'=>$auditId, 'items_json'=>json_encode($items,JSON_THROW_ON_ERROR), 'expected_count'=>$expected,
             ]);
-            if (!$this->db->transStatus()) throw new \RuntimeException('Upload batch audit could not be saved.');
+            if (! $this->db->transStatus()) {
+                throw new \RuntimeException('Upload batch audit could not be saved.');
+            }
             $this->db->transCommit();
         } catch (\Throwable $error) { $this->db->transRollback(); throw $error; }
     }

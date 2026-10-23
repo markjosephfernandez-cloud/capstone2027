@@ -126,11 +126,64 @@ final class WorkspaceThumbnailResponseTest extends CIUnitTestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('image/jpeg', getimagesizefromstring($response->getBody())['mime']);
         $this->assertSame($hash, hash_file('sha256', $this->source));
+        $trash = $this->controller()->trashPreview(2);
+        $this->assertSame('image/jpeg', getimagesizefromstring($trash->getBody())['mime']);
         $this->assertSame('private, no-cache, must-revalidate', $response->getHeaderLine('Cache-Control'));
         $etag = $response->getHeaderLine('ETag');
         $this->assertSame(304, $this->controller(true, $etag)->preview(1)->getStatusCode());
         $this->actor = ['isLoggedIn' => true, 'role' => 'guest'];
         $this->assertSame(403, $this->controller(true, $etag)->preview(1)->getStatusCode());
+    }
+
+    public function testTrashImageThumbnailRevalidatesPermissionAndDoesNotChangeOriginal(): void
+    {
+        $hash = hash_file('sha256', $this->source);
+        foreach (['jpeg', 'png'] as $format) {
+            $image = imagecreatetruecolor(600, 300);
+            $format === 'png' ? imagepng($image, $this->source) : imagejpeg($image, $this->source);
+            imagedestroy($image);
+            clearstatcache(true, $this->source);
+            $hash = hash_file('sha256', $this->source);
+            $response = $this->controller()->trashPreview(2);
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame('image/jpeg', getimagesizefromstring($response->getBody())['mime']);
+            $this->assertSame($hash, hash_file('sha256', $this->source));
+            $this->assertSame(304, $this->controller(true, $response->getHeaderLine('ETag'))->trashPreview(2)->getStatusCode());
+        }
+        $this->assertSame(404, $this->controller()->trashPreview(1)->getStatusCode());
+        $this->assertSame(404, $this->controller()->trashPreview(999)->getStatusCode());
+        foreach (['department', 'writer', 'guest'] as $role) {
+            $this->actor['role'] = $role;
+            $this->assertSame(403, $this->controller()->trashPreview(2)->getStatusCode());
+            $this->assertSame(403, $this->controller()->serverTrashPreview(str_repeat('a', 32))->getStatusCode());
+        }
+        $this->actor = ['isLoggedIn'=>false];
+        $this->assertSame(302, $this->controller()->serverTrashPreview(str_repeat('a', 32))->getStatusCode());
+    }
+
+    public function testServerTrashThumbnailUsesConfinedResolverAndReturnsUnavailableSafely(): void
+    {
+        $editor = $this->createMock(\App\Services\ServerLibraryEditor::class);
+        $editor->expects($this->exactly(2))->method('previewPath')->with(str_repeat('a', 32), '')
+            ->willReturnCallback(function () {
+                static $calls = 0;
+                if (++$calls === 2) throw new RuntimeException('Missing file');
+                return $this->source;
+            });
+        $make = function () use ($editor) {
+            $controller = new class($editor) extends WorkspaceController {
+                public function __construct(private $editor) {}
+                protected function serverTrashEditor(): \App\Services\ServerLibraryEditor { return $this->editor; }
+            };
+            $request = new IncomingRequest(config('App'), new URI('http://example.com/'), null, new UserAgent());
+            $request->setGlobal('get', ['thumbnail'=>'1']);
+            $controller->initController($request, new Response(config('App')), service('logger'));
+            return $controller;
+        };
+        $response = $make()->serverTrashPreview(str_repeat('a', 32));
+        $this->assertSame('image/jpeg', getimagesizefromstring($response->getBody())['mime']);
+        $this->assertSame('private, no-cache, must-revalidate', $response->getHeaderLine('Cache-Control'));
+        $this->assertSame(404, $make()->serverTrashPreview(str_repeat('a', 32))->getStatusCode());
     }
 
     public function testCachedThumbnailStillRequiresPermission(): void

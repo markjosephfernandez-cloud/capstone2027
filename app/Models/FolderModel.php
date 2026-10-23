@@ -12,7 +12,12 @@ class FolderModel extends Model
     protected $useTimestamps = false;
     protected $allowedFields = ['parent_id', 'name', 'description', 'path', 'created_at', 'publication_channel', 'published_at', 'published_by', 'is_deleted', 'deleted_at', 'deleted_by', 'deletion_reason', 'trash_root_id'];
 
-    /** Keep a new folder separate from any older folder still in Trash. */
+    /**
+     * Keep a new folder separate from any older folder still in Trash.
+     *
+     * @return string Relative path available in both metadata and physical storage.
+     * @throws \RuntimeException If the name is active, invalid, or no suffix is available.
+     */
     public function availableStoragePath(string $relativePath): string
     {
         $storage = service('storage');

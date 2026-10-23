@@ -5,6 +5,55 @@ use CodeIgniter\Test\CIUnitTestCase;
 /** @internal */
 final class DashboardViewTest extends CIUnitTestCase
 {
+    public function testDashboardRequiresStrictBooleanLoginState(): void
+    {
+        $session = session();
+        $originalLoginState = $session->get('isLoggedIn');
+        $controller = new \App\Controllers\Web\DashboardController();
+
+        try {
+            foreach ([null, false, 0, 1, '1', 'true'] as $loginState) {
+                $session->set('isLoggedIn', $loginState);
+                $response = $controller->index();
+
+                $this->assertInstanceOf(\CodeIgniter\HTTP\RedirectResponse::class, $response);
+                $this->assertSame(site_url('login'), $response->getHeaderLine('Location'));
+            }
+        } finally {
+            if ($originalLoginState === null) {
+                $session->remove('isLoggedIn');
+            } else {
+                $session->set('isLoggedIn', $originalLoginState);
+            }
+        }
+    }
+
+    public function testNonCreativeRolesSeeVisibleBytesInsteadOfDiskCapacity(): void
+    {
+        $storage = $this->createMock(\App\Services\StorageService::class);
+        $storage->expects($this->exactly(3))->method('root')->willReturn(sys_get_temp_dir());
+        \Config\Services::injectMock('storage', $storage);
+        $controller = new class extends \App\Controllers\Web\DashboardController {
+            public function readStorageStats(string $role): array
+            {
+                return $this->storageStats(['role' => $role], 300);
+            }
+        };
+
+        try {
+            foreach (['writer', 'department', 'unknown'] as $role) {
+                $this->assertSame([
+                    'disk_total'        => 300,
+                    'disk_free'         => 0,
+                    'disk_used'         => 300,
+                    'storage_available' => true,
+                ], $controller->readStorageStats($role));
+            }
+        } finally {
+            \Config\Services::resetSingle('storage');
+        }
+    }
+
     public function testDisconnectedStorageDoesNotPreventDashboardStatistics(): void
     {
         $storage = $this->createMock(\App\Services\StorageService::class);

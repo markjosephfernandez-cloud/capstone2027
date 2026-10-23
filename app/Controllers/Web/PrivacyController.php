@@ -3,10 +3,11 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
+use CodeIgniter\HTTP\RedirectResponse;
 
 class PrivacyController extends BaseController
 {
-    public function accept()
+    public function accept(): RedirectResponse
     {
         if (session()->get('isLoggedIn') !== true) {
             return redirect()->to(site_url('login'));

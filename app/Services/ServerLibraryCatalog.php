@@ -23,7 +23,9 @@ class ServerLibraryCatalog extends ServerLibraryService
 
     public function statusInfo(): array
     {
-        if (!$this->db->tableExists('server_library_sources')) throw new RuntimeException('The server catalog has not been installed.');
+        if (! $this->db->tableExists('server_library_sources')) {
+            throw new RuntimeException('The server catalog has not been installed.');
+        }
         return $this->db->table('server_library_sources')->where('source_key', $this->sourceKey)->get()->getRowArray()
             ?? ['status'=>'not_started', 'completed_at'=>null, 'updated_at'=>null, 'last_error'=>null];
     }
@@ -44,8 +46,12 @@ class ServerLibraryCatalog extends ServerLibraryService
         if ($search === '') $builder->where('parent_hash', hash('sha256', $folder));
         elseif ($this->taggedImageSearch) $this->applyTaggedImageSearch($builder, $search);
         else $builder->groupStart()->like('path', $search, 'both', true)->orLike('tags', $search, 'both', true)->orLike('classification', $search, 'both', true)->orLike('date_taken', $search, 'both', true)->groupEnd();
-        if ($type !== '') $builder->groupStart()->where('is_dir', 1)->orWhere('extension', strtolower($type))->groupEnd();
-        if ($imagesOnly) $builder->groupStart()->where('is_dir', 1)->orWhereIn('extension', ['jpg','jpeg','png','webp'])->groupEnd();
+        if ($type !== '') {
+            $builder->groupStart()->where('is_dir', 1)->orWhere('extension', strtolower($type))->groupEnd();
+        }
+        if ($imagesOnly) {
+            $builder->groupStart()->where('is_dir', 1)->orWhereIn('extension', ['jpg', 'jpeg', 'png', 'webp'])->groupEnd();
+        }
         $counts = (clone $builder)->select('COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_dir = 0 THEN 1 ELSE 0 END), 0) AS file_total', false)->get()->getRowArray();
         $total = (int) $counts['total'];
         $fileTotal = (int) $counts['file_total'];
@@ -121,7 +127,9 @@ class ServerLibraryCatalog extends ServerLibraryService
             // Match the exact Finder metadata filename, including its hidden CR.
             // HEX avoids collation rules hiding a real file named Icon.
             ->where('HEX(name) !=', '49636F6E0D');
-        if ($this->centralized) $builder->where('LOWER(path) !=', 'department')->notLike('LOWER(path)', 'department/', 'after');
+        if ($this->centralized) {
+            $builder->where('LOWER(path) !=', 'department')->notLike('LOWER(path)', 'department/', 'after');
+        }
         // Also hide caches already indexed before this policy, before pagination
         // and counts. Originals inside the same bundle remain searchable.
         foreach (self::FINAL_CUT_CACHE_FOLDERS as $cacheFolder) {
@@ -133,10 +141,27 @@ class ServerLibraryCatalog extends ServerLibraryService
         return $builder;
     }
 
+    /** Aggregate the entire visible catalog, including files in nested folders. */
+    public function storageAnalytics(): array
+    {
+        $categories = $this->visibleEntries(true)->where('is_dir', 0)
+            ->select('extension AS filetype, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_size')
+            ->groupBy('extension')->orderBy('total_size', 'DESC')->orderBy('extension')
+            ->get()->getResultArray();
+
+        return [
+            'active_files' => (int) array_sum(array_column($categories, 'file_count')),
+            'total_bytes' => (int) array_sum(array_column($categories, 'total_size')),
+            'categories' => $categories,
+        ];
+    }
+
     public function suggestions(string $folder, string $query, string $type = '', ?callable $continueReading = null): array
     {
         $this->relative($folder);
-        if (mb_strlen(trim($query)) < 2) return [];
+        if (mb_strlen(trim($query)) < 2) {
+            return [];
+        }
         // Match values that can actually be suggested, not every descendant
         // whose parent path matches. No totals or global sort while typing.
         $match = $this->literalLike($query);
@@ -144,7 +169,9 @@ class ServerLibraryCatalog extends ServerLibraryService
         if ($this->taggedImageSearch) $this->applyTaggedImageSearch($builder, $match);
         else $builder->groupStart()->like('name', $match)->orLike('tags', $match)
             ->orLike('classification', $match)->orLike('date_taken', $match)->groupEnd();
-        if ($type !== '') $builder->groupStart()->where('is_dir', 1)->orWhere('extension', strtolower($type))->groupEnd();
+        if ($type !== '') {
+            $builder->groupStart()->where('is_dir', 1)->orWhere('extension', strtolower($type))->groupEnd();
+        }
         $items = array_map(static fn ($row) => [
             'name'=>$row['name'], 'directory'=>(bool)$row['is_dir'],
             'tags'=>json_decode($row['tags'], true) ?: [],

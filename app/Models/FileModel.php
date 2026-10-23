@@ -20,4 +20,16 @@ class FileModel extends Model
         'distribution_type', 'distribution_target', 'processed_at', 'updated_at',
         'downloadable', 'app_post_id', 'app_published_at', 'app_pinned',
     ];
+
+    /**
+     * Serialize watch-history updates for a file, including its first history row.
+     * The caller must already have an open transaction on this connection.
+     *
+     * Query Builder does not express this MySQL row lock; keep the existing SQL
+     * and bound identifier value so lock scope and database behavior stay intact.
+     */
+    public function lockForWatchHistory(int $fileId): void
+    {
+        $this->db->query('SELECT id FROM files WHERE id = ? FOR UPDATE', [$fileId]);
+    }
 }

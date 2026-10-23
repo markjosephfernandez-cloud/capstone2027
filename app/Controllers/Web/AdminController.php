@@ -105,7 +105,9 @@ class AdminController extends BaseController
 
     public function serverHealth()
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         session()->close();
         $connected = false;
         $writable = false;
@@ -128,11 +130,17 @@ class AdminController extends BaseController
 
     public function createUser()
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         $employeeId = filter_var($this->request->getPost('employee_id'), FILTER_VALIDATE_INT);
         try {
-            if ($employeeId === false || $employeeId < 1) throw new RuntimeException('Enter a valid employee ID.');
-            if ((new UserModel())->find((int) $employeeId) !== null) throw new RuntimeException('That employee ID already exists.');
+            if ($employeeId === false || $employeeId < 1) {
+                throw new RuntimeException('Enter a valid employee ID.');
+            }
+            if ((new UserModel())->find((int) $employeeId) !== null) {
+                throw new RuntimeException('That employee ID already exists.');
+            }
             $profile = $this->validatedProfile();
             $password = (string) $this->request->getPost('password');
             $this->validatePassword($password, (string) $this->request->getPost('password_confirm'));
@@ -150,19 +158,29 @@ class AdminController extends BaseController
 
     public function updateUser(int $employeeId)
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         $model = new UserModel();
         $target = $model->find($employeeId);
-        if ($target === null) return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        if ($target === null) {
+            return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        }
         try {
             $profile = $this->validatedProfile();
             $actorId = (int) session()->get('employee_id');
-            if ($employeeId === $actorId && $profile['role'] !== 'super_admin') throw new RuntimeException('You cannot remove your own Super Admin role.');
-            if ((string) $target['role'] === 'super_admin' && $profile['role'] !== 'super_admin' && (int) ($target['is_active'] ?? 1) === 1 && $this->activeAdminCount() <= 1) throw new RuntimeException('At least one active Super Admin account must remain.');
+            if ($employeeId === $actorId && $profile['role'] !== 'super_admin') {
+                throw new RuntimeException('You cannot remove your own Super Admin role.');
+            }
+            if ((string) $target['role'] === 'super_admin' && $profile['role'] !== 'super_admin' && (int) ($target['is_active'] ?? 1) === 1 && $this->activeAdminCount() <= 1) {
+                throw new RuntimeException('At least one active Super Admin account must remain.');
+            }
             $this->ensureDepartmentStorage($profile);
             $profile['updated_at'] = gmdate('Y-m-d H:i:s');
             $model->update($employeeId, $profile);
-            if ($employeeId === $actorId) session()->set(['name' => $profile['name'], 'department' => $profile['department'], 'position' => $profile['position']]);
+            if ($employeeId === $actorId) {
+                session()->set(['name' => $profile['name'], 'department' => $profile['department'], 'position' => $profile['position']]);
+            }
         } catch (RuntimeException $exception) {
             return redirect()->to(site_url('admin/control-center#users'))->with('error', $exception->getMessage());
         }
@@ -172,15 +190,25 @@ class AdminController extends BaseController
 
     public function toggleUser(int $employeeId)
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         $model = new UserModel();
         $target = $model->find($employeeId);
-        if ($target === null) return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
-        if ($employeeId === (int) session()->get('employee_id')) return redirect()->to(site_url('admin/control-center#users'))->with('error', 'You cannot deactivate your own account.');
+        if ($target === null) {
+            return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        }
+        if ($employeeId === (int) session()->get('employee_id')) {
+            return redirect()->to(site_url('admin/control-center#users'))->with('error', 'You cannot deactivate your own account.');
+        }
         $activate = (int) ($target['is_active'] ?? 1) !== 1;
-        if (! $activate && (string) $target['role'] === 'super_admin' && $this->activeAdminCount() <= 1) return redirect()->to(site_url('admin/control-center#users'))->with('error', 'At least one active Super Admin account must remain.');
+        if (! $activate && (string) $target['role'] === 'super_admin' && $this->activeAdminCount() <= 1) {
+            return redirect()->to(site_url('admin/control-center#users'))->with('error', 'At least one active Super Admin account must remain.');
+        }
         $model->update($employeeId, ['is_active' => $activate ? 1 : 0, 'updated_at' => gmdate('Y-m-d H:i:s')]);
-        if (! $activate) $this->revokeUserTokens($employeeId);
+        if (! $activate) {
+            $this->revokeUserTokens($employeeId);
+        }
         $action = $activate ? 'USER_ACTIVATED' : 'USER_DEACTIVATED';
         service('audit')->record(session()->get(), $this->request, 'admin', $action, 'user', $employeeId, ($activate ? 'Activated' : 'Deactivated') . ' account for ' . ($target['name'] ?? $employeeId) . '.');
         return redirect()->to(site_url('admin/control-center#users'))->with('success', 'Account ' . ($activate ? 'activated.' : 'deactivated and API access revoked.'));
@@ -188,10 +216,14 @@ class AdminController extends BaseController
 
     public function resetPassword(int $employeeId)
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         $model = new UserModel();
         $target = $model->find($employeeId);
-        if ($target === null) return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        if ($target === null) {
+            return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        }
         $password = (string) $this->request->getPost('password');
         try { $this->validatePassword($password, (string) $this->request->getPost('password_confirm')); }
         catch (RuntimeException $exception) { return redirect()->to(site_url('admin/control-center#users'))->with('error', $exception->getMessage()); }
@@ -203,8 +235,12 @@ class AdminController extends BaseController
 
     public function revokeTokens(int $employeeId)
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
-        if ((new UserModel())->find($employeeId) === null) return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
+        if ((new UserModel())->find($employeeId) === null) {
+            return redirect()->to(site_url('admin/control-center#users'))->with('error', 'The selected account is unavailable.');
+        }
         $count = $this->revokeUserTokens($employeeId);
         service('audit')->record(session()->get(), $this->request, 'admin', 'TOKENS_REVOKED', 'user', $employeeId, 'Revoked ' . $count . ' active API token(s).');
         return redirect()->to(site_url('admin/control-center#users'))->with('success', $count . ' active API token(s) revoked.');
@@ -212,14 +248,20 @@ class AdminController extends BaseController
 
     public function sendConsentReminders()
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         $db = db_connect();
-        if (! $db->tableExists('privacy_consents') || ! $db->tableExists('notifications')) return redirect()->to(site_url('admin/control-center'))->with('error', 'Consent notifications are unavailable.');
+        if (! $db->tableExists('privacy_consents') || ! $db->tableExists('notifications')) {
+            return redirect()->to(site_url('admin/control-center'))->with('error', 'Consent notifications are unavailable.');
+        }
         $users = $db->table('user u')->select('u.employee_id, u.role')->join('privacy_consents pc', 'pc.employee_id = u.employee_id AND pc.policy_version = ' . $db->escape(ConsentService::POLICY_VERSION), 'left')->where('u.is_active', 1)->where('pc.id', null)->get()->getResultArray();
         $sent = 0;
         foreach ($users as $user) {
             $existing = $db->table('notifications')->where('recipient_id', (string) $user['employee_id'])->where('type', 'privacy_consent_reminder')->where('is_read', 0)->countAllResults();
-            if ($existing > 0) continue;
+            if ($existing > 0) {
+                continue;
+            }
             $db->table('notifications')->insert(['recipient_id' => (string) $user['employee_id'], 'recipient_role' => (string) $user['role'], 'type' => 'privacy_consent_reminder', 'title' => 'Data Privacy acknowledgement required', 'message' => 'Please sign in and acknowledge the current Greyhound Hub data privacy and media-use notice.', 'link' => site_url('dashboard'), 'is_read' => 0, 'created_at' => gmdate('Y-m-d H:i:s')]);
             ++$sent;
         }
@@ -229,7 +271,9 @@ class AdminController extends BaseController
 
     public function purgeExpiredTrash()
     {
-        if (($redirect = $this->requireAdmin()) !== null) return $redirect;
+        if (($redirect = $this->requireAdmin()) !== null) {
+            return $redirect;
+        }
         $actor = session()->get();
         $purged = (new TrashService(db_connect()))->purgeExpiredTrash($actor, $this->request, 500);
         service('audit')->record($actor, $this->request, 'admin', 'TRASH_RETENTION_RUN', 'trash', null, 'Ran the 30-day Trash retention cleanup; purged ' . $purged . ' media item(s).');
@@ -238,8 +282,12 @@ class AdminController extends BaseController
 
     private function requireAdmin(): ?RedirectResponse
     {
-        if (session()->get('isLoggedIn') !== true) return redirect()->to(site_url('login'));
-        if (! RolePolicy::isSuperAdmin(session()->get())) return redirect()->to(site_url('dashboard'))->with('error', 'Super Admin access is required to open the Control Center.');
+        if (session()->get('isLoggedIn') !== true) {
+            return redirect()->to(site_url('login'));
+        }
+        if (! RolePolicy::isSuperAdmin(session()->get())) {
+            return redirect()->to(site_url('dashboard'))->with('error', 'Super Admin access is required to open the Control Center.');
+        }
         return null;
     }
 
@@ -251,16 +299,26 @@ class AdminController extends BaseController
         $position = trim(mb_substr((string) $this->request->getPost('position'), 0, 150));
         $email = trim(mb_substr((string) $this->request->getPost('email_address'), 0, 255));
         $role = trim((string) $this->request->getPost('role'));
-        if (mb_strlen($name) < 2 || $department === '' || $position === '') throw new RuntimeException('Name, department, and position are required.');
-        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Enter a valid email address.');
-        if (! in_array($role, ['super_admin', 'admin', 'writer', 'department'], true)) throw new RuntimeException('Choose a valid system role.');
+        if (mb_strlen($name) < 2 || $department === '' || $position === '') {
+            throw new RuntimeException('Name, department, and position are required.');
+        }
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new RuntimeException('Enter a valid email address.');
+        }
+        if (! in_array($role, ['super_admin', 'admin', 'writer', 'department'], true)) {
+            throw new RuntimeException('Choose a valid system role.');
+        }
         return ['name' => $name, 'department' => $department, 'position' => $position, 'email_address' => $email, 'role' => $role];
     }
 
     private function validatePassword(string $password, string $confirmation): void
     {
-        if ($password !== $confirmation) throw new RuntimeException('The password confirmation does not match.');
-        if (strlen($password) < 8 || strlen($password) > 128 || preg_match('/[A-Za-z]/', $password) !== 1 || preg_match('/\d/', $password) !== 1) throw new RuntimeException('Password must be 8-128 characters and contain at least one letter and one number.');
+        if ($password !== $confirmation) {
+            throw new RuntimeException('The password confirmation does not match.');
+        }
+        if (strlen($password) < 8 || strlen($password) > 128 || preg_match('/[A-Za-z]/', $password) !== 1 || preg_match('/\d/', $password) !== 1) {
+            throw new RuntimeException('Password must be 8-128 characters and contain at least one letter and one number.');
+        }
     }
 
     /** @param array{name:string,department:string,position:string,email_address:string,role:string} $profile */
@@ -279,10 +337,14 @@ class AdminController extends BaseController
     private function revokeUserTokens(int $employeeId): int
     {
         $db = db_connect();
-        if (! $db->tableExists('api_tokens')) return 0;
+        if (! $db->tableExists('api_tokens')) {
+            return 0;
+        }
         $builder = $db->table('api_tokens')->where('user_employee_id', $employeeId)->where('revoked_at', null);
         $count = $builder->countAllResults(false);
-        if ($count > 0) $builder->update(['revoked_at' => gmdate('Y-m-d H:i:s')]);
+        if ($count > 0) {
+            $builder->update(['revoked_at' => gmdate('Y-m-d H:i:s')]);
+        }
         return $count;
     }
 }

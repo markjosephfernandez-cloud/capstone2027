@@ -12,15 +12,23 @@ class PassportService
     {
         $db = db_connect();
         $file = $db->table('files')->where('id', $id)->where('is_deleted', 0)->get()->getRowArray();
-        if (!$file || !in_array(strtolower((string) $file['filetype']), ['jpg','jpeg','png','gif','webp','bmp','tif','tiff'], true)) throw new RuntimeException('The selected image is unavailable.');
-        if ($db->table('passports')->where('media_id', $id)->countAllResults()) return ['status'=>'skipped', 'message'=>'Passport already exists.'];
+        if (! $file || ! in_array(strtolower((string) $file['filetype']), ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'], true)) {
+            throw new RuntimeException('The selected image is unavailable.');
+        }
+        if ($db->table('passports')->where('media_id', $id)->countAllResults()) {
+            return ['status' => 'skipped', 'message' => 'Passport already exists.'];
+        }
         $physical = service('storage')->resolveDatabaseFile((string) $file['filepath']);
-        if (!is_file($physical) || !is_readable($physical)) throw new RuntimeException('The original image cannot be read. Reconnect its storage and retry.');
+        if (! is_file($physical) || ! is_readable($physical)) {
+            throw new RuntimeException('The original image cannot be read. Reconnect its storage and retry.');
+        }
         $detection = $db->table('ai_event_detections')->where('media_id', $id)->get()->getRowArray() ?? [];
         $db->transBegin();
         try {
             $passport = $this->generate($file, $this->passportActorForFile($file, $actor), $detection);
-            if ($passport === null || !$db->transStatus()) throw new RuntimeException('The metadata passport could not be saved.');
+            if ($passport === null || ! $db->transStatus()) {
+                throw new RuntimeException('The metadata passport could not be saved.');
+            }
             $db->transCommit();
             return ['status'=>'complete', 'message'=>'Metadata scanned and passport generated.', 'passport'=>$passport];
         } catch (\Throwable $error) { $db->transRollback(); throw $error; }
@@ -94,7 +102,11 @@ class PassportService
         return $result;
     }
 
-    /** @param array<string, mixed> $file @param array<string, mixed> $actor @param array<string, mixed> $detection */
+    /**
+     * @param array<string, mixed> $file
+     * @param array<string, mixed> $actor
+     * @param array<string, mixed> $detection
+     */
     public function generate(array $file, array $actor, array $detection): ?array
     {
         $db = db_connect();
@@ -235,7 +247,11 @@ class PassportService
         }
     }
 
-    /** @param array<string, mixed> $file @param array<string, mixed> $actor @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $file
+     * @param array<string, mixed> $actor
+     * @return array<string, mixed>
+     */
     private function passportActorForFile(array $file, array $actor): array
     {
         $uploader = ! empty($file['employee_id'])

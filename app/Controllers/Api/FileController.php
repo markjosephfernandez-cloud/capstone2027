@@ -25,7 +25,9 @@ class FileController extends ApiController
                 return $this->error('validation_error', 'Search text may not exceed 150 characters.', 422);
             }
             $folderModel = new FolderModel();
-            if (($actor['role'] ?? '') === 'department') $folderModel->setTable('department_folders')->where('department', (string)($actor['department'] ?? ''));
+            if (($actor['role'] ?? '') === 'department') {
+                $folderModel->setTable('department_folders')->where('department', (string) ($actor['department'] ?? ''));
+            }
             $folderIds = array_map('intval', array_column($folderModel->where('is_deleted', 0)->select('id')->like('name', $search)->findAll(), 'id'));
             $query->groupStart()
                 ->like('display_title', $search)
@@ -88,15 +90,21 @@ class FileController extends ApiController
             try {
                 $displayTitle = MediaTitle::validate($this->request->getPost('display_title'));
                 $description = trim((string)$this->request->getPost('description'));
-                if (mb_strlen($description) > 5000) throw new RuntimeException('Description may not exceed 5,000 characters.');
+                if (mb_strlen($description) > 5000) {
+                    throw new RuntimeException('Description may not exceed 5,000 characters.');
+                }
                 $channel = trim((string)$this->request->getPost('channel')) ?: \App\Services\AppPublishingService::DEFAULT_CHANNEL;
                 $folderId = $this->request->getPost('folder_id');
                 $directory = (string)$this->request->getPost('directory');
                 if ($folderId !== null && $folderId !== '') {
                     $folder = (new FolderModel())->where('is_deleted',0)->find((int)$folderId);
-                    if (!$folder) throw new RuntimeException('Choose an available folder.');
+                    if (! $folder) {
+                        throw new RuntimeException('Choose an available folder.');
+                    }
                     $directory = (string)$folder['path'];
-                    if (str_starts_with($directory,'server-library/')) $directory = substr($directory,15);
+                    if (str_starts_with($directory, 'server-library/')) {
+                        $directory = substr($directory, 15);
+                    }
                 }
                 $library = new \App\Services\ServerLibraryService();
                 $result = (new \App\Services\ServerLibraryUploadService($library))->receive($uploaded,
@@ -416,7 +424,9 @@ class FileController extends ApiController
     private function findFile(int $id, bool $includeTrashed = false): ?array
     {
         $query = $this->actorFileModel();
-        if (!$includeTrashed) $query->where('is_deleted', 0);
+        if (! $includeTrashed) {
+            $query->where('is_deleted', 0);
+        }
         return $query->find($id);
     }
 
@@ -424,7 +434,9 @@ class FileController extends ApiController
     {
         $model = new FileModel();
         $actor = $this->actor();
-        if (($actor['role'] ?? '') === 'department') $model->setTable('department_files')->where('department', (string)($actor['department'] ?? ''));
+        if (($actor['role'] ?? '') === 'department') {
+            $model->setTable('department_files')->where('department', (string) ($actor['department'] ?? ''));
+        }
         return $model;
     }
 

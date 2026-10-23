@@ -129,17 +129,24 @@ class WatermarkService
         $logos = [];
         foreach (glob($this->uploadedLogoDirectory . '/CUSTOM-*/metadata.json') ?: [] as $metadata) {
             $code = basename(dirname($metadata));
-            if (! preg_match('/^CUSTOM-[A-F0-9]{16}$/D', $code) || ! is_file(dirname($metadata) . '/logo.png')) continue;
+            if (! preg_match('/^CUSTOM-[A-F0-9]{16}$/D', $code) || ! is_file(dirname($metadata) . '/logo.png')) {
+                continue;
+            }
             $logo = json_decode((string) @file_get_contents($metadata), true);
-            if (! is_array($logo) || ! is_string($logo['label'] ?? null) || trim($logo['label']) === '') continue;
+            if (! is_array($logo) || ! is_string($logo['label'] ?? null) || trim($logo['label']) === '') {
+                continue;
+            }
             $logos[$code] = ['code' => $code, 'label' => $logo['label'], 'name' => $logo['label']];
         }
         uasort($logos, static fn (array $a, array $b): int => strnatcasecmp($a['label'], $b['label']));
         return $logos;
     }
 
-    /** @param array<string, mixed> $file @param array<string, mixed> $actor @return array{applied: bool, path?: string, reason?: string, logo_code?: string} */
-    /** @param array<string, mixed> $file @param array<string, mixed> $settings @return array{applied: bool, path?: string, reason?: string, logo_code?: string} */
+    /**
+     * @param array<string, mixed> $file
+     * @param array<string, mixed> $settings
+     * @return array{applied: bool, path?: string, reason?: string, logo_code?: string}
+     */
     public function createForDownload(array $file, string $logoCode, array $settings = []): array
     {
         return $this->generate($file, strtoupper(trim($logoCode)), $settings);
@@ -151,7 +158,11 @@ class WatermarkService
         return $this->generate([], strtoupper(trim($logoCode)), $settings, $source);
     }
 
-    /** @param array<string, mixed> $file @param array<string, mixed> $settings @return array{applied: bool, path?: string, reason?: string, logo_code?: string} */
+    /**
+     * @param array<string, mixed> $file
+     * @param array<string, mixed> $settings
+     * @return array{applied: bool, path?: string, reason?: string, logo_code?: string}
+     */
     private function generate(array $file, string $logoCode, array $settings, ?string $source = null): array
     {
         try {
@@ -183,7 +194,10 @@ class WatermarkService
         return ['applied' => true, 'path' => $destination, 'logo_code' => $logoCode];
     }
 
-    /** @param array<string, mixed> $settings @return array{written: bool, reason?: string} */
+    /**
+     * @param array<string, mixed> $settings
+     * @return array{written: bool, reason?: string}
+     */
     private function renderWithCli(string $source, string $logoPath, string $destination, string $extension, array $settings): array
     {
         if (! function_exists('proc_open')) {
