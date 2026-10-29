@@ -55,12 +55,12 @@ class DashboardController extends BaseController
         $actor = session()->get();
         $departmentUser = RolePolicy::role($actor) === 'department';
         $fileTable = $departmentUser ? 'department_files' : 'files';
-        $visible = $db->table($fileTable)->where('is_deleted', 0);
-        if ($departmentUser) $visible->where('department', (string)($actor['department'] ?? ''));
-        $activeFiles = (int) $visible->countAllResults();
-        $visible = $db->table($fileTable)->where('is_deleted', 0);
-        if ($departmentUser) $visible->where('department', (string)($actor['department'] ?? ''));
-        $totalBytes = (int) ($visible->selectSum('size')->get()->getRowArray()['size'] ?? 0);
+        $summaryQuery = $db->table('vw_dashboard_summary')
+            ->where('library_scope', $departmentUser ? 'department' : 'central');
+        if ($departmentUser) $summaryQuery->where('department', (string)($actor['department'] ?? ''));
+        $summary = $summaryQuery->get()->getRowArray();
+        $activeFiles = (int) ($summary['total_files'] ?? 0);
+        $totalBytes = (int) ($summary['total_bytes'] ?? 0);
         $totalFiles = $activeFiles;
         $categoriesBuilder = $db->table($fileTable)->select('filetype, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_size')->where('is_deleted', 0);
         if ($departmentUser) $categoriesBuilder->where('department', (string)($actor['department'] ?? ''));
